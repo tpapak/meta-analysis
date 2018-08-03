@@ -1,0 +1,64 @@
+name:                meta-analysis
+version:             0.1.0.0
+github:              "tpapak/meta-analysis"
+license:             GPL-3
+author:              "Thodoris Papakonstantinou"
+maintainer:          "mail@tpapak.com"
+copyright:           "2018 Thodoris Papakonstantinou"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Meta-analysis evidence synthesis bio statistics
+# synopsis:            Basic functions for synthesizing medical studies.
+# category:            Medical research
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/tpapak/meta-analysis#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+  dependencies:
+   - aeson
+   - bytestring
+   - aeson-pretty
+   - containers
+   - text
+   - split
+   - cassava
+  exposed-modules:
+   - Data.Meta
+
+executables:
+  meta-analysis-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - meta-analysis
+
+tests:
+  meta-analysis-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - vector
+    - cassava
+    - meta-analysis
+    - tesths
+    - aeson
+    - containers
+    - bytestring
