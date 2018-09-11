@@ -33,6 +33,7 @@ library:
    - split
    - cassava
   exposed-modules:
+   - Data.Numerics
    - Data.Meta
 
 executables:
