@@ -24,7 +24,7 @@ ioTests = [ test1
           , test2
           , test3
           , test4
-          {-, oddsratio-}
+          , testLogOR
           ]
 
 test1 :: IO Test
@@ -37,8 +37,8 @@ test1 = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right studies -> do
-      putStrLn "Studies file"
-      putStrLn $ show studies
+      {-putStrLn "Studies file"-}
+      {-putStrLn $ show studies-}
       return $ testPassed name $ "passed!"
 
 test2 :: IO Test
@@ -51,8 +51,8 @@ test2 = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      putStrLn "Studies file"
-      putStrLn $ show studies
+      {-putStrLn "Studies file"-}
+      {-putStrLn $ show studies-}
       return $ testPassed name $ "passed!"
 
 test3 :: IO Test
@@ -66,8 +66,8 @@ test3 = do
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
       let meandiffs = V.toList $ V.map meanDifference studies
-      putStrLn "mean differences of continuous"
-      putStrLn $ show $ rights meandiffs
+      {-putStrLn "mean differences of continuous"-}
+      {-putStrLn $ show $ rights meandiffs-}
       return $ testPassed name $ "passed!"
 
 test4 :: IO Test
@@ -80,9 +80,9 @@ test4 = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      putStrLn "standardized mean differences of continuous"
+      {-putStrLn "standardized mean differences of continuous"-}
       let smds = rights $ V.toList $ V.map standardizedMeanDifference studies
-          gs   = map ((\s -> (roundDouble s 3)) . effect) smds
+          gs   = map ((\s -> (roundDouble s 3)) . expectation) smds
           vgs  = map ((\s -> (roundDouble s 3)) . variance) smds
           correctgs = [ 0.095
                       , 0.277
@@ -104,17 +104,40 @@ test4 = do
         else
           return $ testFailed name $ ("wrong swithin values", (show gs <> show correctgs <> show vgs <> show correctvgs))
 
-{-oddsratio :: IO Test-}
-{-oddsratio = do-}
-  {-let name = "odds ratio"-}
-  {-let studiesFile = "test/binary.csv"-}
-  {-csvData <- B.readFile studiesFile-}
-  {-let estudies = C.decodeByName csvData-}
-               {-:: Either String (C.Header, V.Vector Study)-}
-  {-case estudies of-}
-    {-Left err -> return $ testFailed name $ ("error parsing csv",err)-}
-    {-Right (_, studies) -> do-}
-      {-let meandiffs = V.toList $ V.map meanDifference studies-}
-      {-putStrLn "mean differences of continuous"-}
-      {-putStrLn $ show $ rights meandiffs-}
-      {-return $ testPassed name $ "passed!"-}
+testLogOR :: IO Test
+testLogOR = do
+  let name = "log Odds Ratio"
+  let studiesFile = "test/binary.csv"
+  csvData <- B.readFile studiesFile
+  let estudies = C.decodeByName csvData
+               :: Either String (C.Header, V.Vector Study)
+  case estudies of
+    Left err -> return $ testFailed name $ ("error parsing csv",err)
+    Right (_, studies) -> do
+      let lnORs = rights $ V.toList $ V.map logOddsRatio studies
+          estimates  = map ((\s -> (roundDouble s 4)) . expectation) lnORs
+          variances  = map ((\s -> (roundDouble s 4)) . variance) lnORs
+          correctlnORs = [ -0.3662
+                         , -0.2877
+                         , -0.3842
+                         , -1.3218
+                         , -0.4169
+                         , -0.1595
+                         ]
+          correctvars = [ 0.1851
+                        , 0.2896
+                        , 0.1556
+                        , 0.0583
+                        , 0.2816
+                        , 0.1597
+                        ]
+      if estimates == correctlnORs 
+         then
+           if variances == correctvars 
+              then
+                return $ testPassed name $ "passed!"
+              else
+                return $ testFailed name $ ("wrong lnRRs variances",show variances <> show correctvars)
+         else
+           return $ testFailed name $ ("wrong lnRRs",show estimates <> show correctlnORs)
+
