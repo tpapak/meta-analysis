@@ -26,6 +26,7 @@ ioTests = [ test1
           , test4
           , testLogOR
           , testRR
+          , testOR
           ]
 
 test1 :: IO Test
@@ -186,4 +187,49 @@ testRR = do
                 return $ testFailed name $ ("wrong RRs CIs",show cils <> show correctcil <> " " <>show cius <> show correctciu)
          else
            return $ testFailed name $ ("wrong RRs",show estimates <> show correctRRs)
+
+testOR :: IO Test
+testOR = do
+  let name = "Odds Ratio"
+  let studiesFile = "test/binary.csv"
+  csvData <- B.readFile studiesFile
+  let estudies = C.decodeByName csvData
+               :: Either String (C.Header, V.Vector Study)
+  case estudies of
+    Left err -> return $ testFailed name $ ("error parsing csv",err)
+    Right (_, studies) -> do
+      let ors = rights $ V.toList $ V.map oddsRatio studies
+          estimates  = map ((\s -> (roundDouble s 4)) . effect) ors
+          cils  = map ((\s -> (roundDouble s 4)) . lower . ci) ors
+          cius  = map ((\s -> (roundDouble s 4)) . upper . ci) ors
+          correctORs = [ 0.6934 
+                      , 0.7500 
+                      , 0.6810 
+                      , 0.2667 
+                      , 0.6591 
+                      , 0.8526 
+                       ]
+          correctcil = [ 0.2984
+                       , 0.2612
+                       , 0.3143
+                       , 0.1661
+                       , 0.2329
+                       , 0.3895
+                       ]
+          correctciu = [ 1.6114
+                       , 2.1534
+                       , 1.4755
+                       , 0.4280
+                       , 1.8650
+                       , 1.8662
+                       ] 
+      if estimates == correctORs
+         then
+           if (correctcil == cils) && (correctciu == cius)
+              then
+                return $ testPassed name $ "passed!"
+              else
+                return $ testFailed name $ ("wrong ORs CIs",show cils <> show correctcil <> " " <>show cius <> show correctciu)
+         else
+           return $ testFailed name $ ("wrong ORs",show estimates <> show correctORs)
 

@@ -19,6 +19,7 @@ module Data.Meta
   , logRiskRatio
   , riskRatio
   , logOddsRatio
+  , oddsRatio
   ) where
 
 import           Control.Applicative
@@ -204,6 +205,25 @@ logOddsRatio (BinaryStudy stid ea na eb nb) = Right $
       logor = log or -- (5.9)
       var = 1/a + 1/b + 1/c + 1/d -- (5.10)
    in LogOR logor var
+  where a = fromIntegral ea
+        b = n1 - a
+        c = fromIntegral eb
+        d = n2 - c
+        n1 = fromIntegral na
+        n2 = fromIntegral nb
+
+oddsRatio :: Study -> Either String OR
+oddsRatio (ContinuousStudy _ _ _ _ _ _ _) =
+  Left "Outcome not Binary"
+oddsRatio (BinaryStudy stid ea na eb nb) =
+  let or = (a*d) / (b*c) -- (5.8)
+      elnOR = logOddsRatio (BinaryStudy stid ea na eb nb)
+   in case elnOR of 
+         Left err -> Left err
+         Right lnOR ->
+           let lnORCI = ci lnOR
+               orci = CI ((exp . lower) lnORCI) ((exp . upper) lnORCI)
+            in Right $ OR or orci
   where a = fromIntegral ea
         b = n1 - a
         c = fromIntegral eb
