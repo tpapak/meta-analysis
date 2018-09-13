@@ -13,9 +13,11 @@ module Data.Meta
   , LogOR (..)
   , OR (..)
   , RR (..)
+  , ConfidenceInterval (..)
   , meanDifference
   , standardizedMeanDifference
   , logRiskRatio
+  , riskRatio
   , logOddsRatio
   ) where
 
@@ -58,6 +60,14 @@ data Study =
 instance C.FromRecord Study
 instance C.FromNamedRecord Study
 instance C.ToNamedRecord Study
+
+-- | get the confidence interval of an effect given its variance
+normalCI :: Gaussian g => g -> ConfidenceInterval
+normalCI d =
+  let μ = expectation d  
+      v = variance d
+      se = sqrt v
+   in CI (μ - 1.959964 * se) (μ + 1.959964 * se)
 
 type PointEstimate = Double
 type Variance = Double
@@ -127,13 +137,6 @@ instance Effect RR where
 checkCI :: ConfidenceInterval -> Bool
 checkCI (CI l u) = l < u
 
--- | get the confidence interval of an effect given its variance
-normalCI :: Gaussian g => g -> ConfidenceInterval
-normalCI d =
-  let μ = expectation d  
-      v = variance d
-      se = sqrt v
-   in CI (μ - 1.96 * se) (μ - 1.96 * se)
 
 meanDifference :: Study -> Either String MD
 meanDifference (BinaryStudy _ _ _ _ _) = 
@@ -171,6 +174,23 @@ logRiskRatio (BinaryStudy stid ea na eb nb) = Right $
       logrr = log rr -- (5.2)
       var = 1/a - 1/n1 + 1/c - 1/n2 -- (5.3)
    in LogRR logrr var
+  where a = fromIntegral ea
+        c = fromIntegral eb
+        n1 = fromIntegral na
+        n2 = fromIntegral nb
+
+riskRatio :: Study -> Either String RR
+riskRatio (ContinuousStudy _ _ _ _ _ _ _) =
+  Left "Outcome not Binary"
+riskRatio (BinaryStudy stid ea na eb nb) =
+  let rr = (a/n1) / (c/n2) -- (5.1)
+      elnRR = logRiskRatio (BinaryStudy stid ea na eb nb)
+   in case elnRR of 
+         Left err -> Left err
+         Right lnRR ->
+           let lnRRCI = ci lnRR
+               rrci = CI ((exp . lower) lnRRCI) ((exp . upper) lnRRCI)
+            in Right $ RR rr rrci
   where a = fromIntegral ea
         c = fromIntegral eb
         n1 = fromIntegral na

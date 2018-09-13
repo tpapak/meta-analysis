@@ -25,6 +25,7 @@ ioTests = [ test1
           , test3
           , test4
           , testLogOR
+          , testRR
           ]
 
 test1 :: IO Test
@@ -140,4 +141,49 @@ testLogOR = do
                 return $ testFailed name $ ("wrong lnRRs variances",show variances <> show correctvars)
          else
            return $ testFailed name $ ("wrong lnRRs",show estimates <> show correctlnORs)
+
+testRR :: IO Test
+testRR = do
+  let name = "Risk Ratio"
+  let studiesFile = "test/binary.csv"
+  csvData <- B.readFile studiesFile
+  let estudies = C.decodeByName csvData
+               :: Either String (C.Header, V.Vector Study)
+  case estudies of
+    Left err -> return $ testFailed name $ ("error parsing csv",err)
+    Right (_, studies) -> do
+      let rrs = rights $ V.toList $ V.map riskRatio studies
+          estimates  = map ((\s -> (roundDouble s 4)) . effect) rrs
+          cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rrs
+          cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rrs
+          correctRRs = [ 0.7500
+                       , 0.8000
+                       , 0.7368
+                       , 0.3125
+                       , 0.7273
+                       , 0.8889
+                       ]
+          correctcil = [ 0.3858
+                       , 0.3524
+                       , 0.3976
+                       , 0.2039
+                       , 0.3273
+                       , 0.4982
+                       ]
+          correctciu = [ 1.4581                      
+                       , 1.8162                      
+                       , 1.3655                      
+                       , 0.4790                      
+                       , 1.6159                      
+                       , 1.5861
+                       ] 
+      if estimates == correctRRs 
+         then
+           if (correctcil == cils) && (correctciu == cius)
+              then
+                return $ testPassed name $ "passed!"
+              else
+                return $ testFailed name $ ("wrong RRs CIs",show cils <> show correctcil <> " " <>show cius <> show correctciu)
+         else
+           return $ testFailed name $ ("wrong RRs",show estimates <> show correctRRs)
 
