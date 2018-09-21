@@ -1,8 +1,21 @@
+{-|
+Module      : Meta.Effects
+Description : Effect size calculations 
+Copyright   : (c) Thodoris Papakonstantinou, 2018
+License     : GPL-3
+Maintainer  : mail@tpapak.com
+Stability   : experimental
+Portability : POSIX
+
+Effect size calculations for binary and countinuous outcomes
+following Borenstein et al's Introduction to Meta-Analysis
+-}
+
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Data.Meta
+module Data.Meta.Effects
   ( TreatmentId (..)
   , Study (..)
   , Effect (..)
@@ -13,6 +26,7 @@ module Data.Meta
   , LogOR (..)
   , OR (..)
   , RR (..)
+  , RD (..)
   , ConfidenceInterval (..)
   , meanDifference
   , standardizedMeanDifference
@@ -20,6 +34,7 @@ module Data.Meta
   , riskRatio
   , logOddsRatio
   , oddsRatio
+  , riskDifference
   ) where
 
 import           Control.Applicative
@@ -134,6 +149,15 @@ instance Effect RR where
   effect (RR p ci) = p
   ci (RR p ci) = ci
 
+data RD = RD PointEstimate Variance -- ^ Risk Difference
+  deriving (Generic,Read,Ord,Eq,Show)
+instance Effect RD where
+  effect (RD p v) = p
+  ci = normalCI
+instance Gaussian RD where
+  expectation (RD p v) = p
+  variance (RD p v) = v
+
 -- | checks if CI is messed up
 checkCI :: ConfidenceInterval -> Bool
 checkCI (CI l u) = l < u
@@ -224,6 +248,20 @@ oddsRatio (BinaryStudy stid ea na eb nb) =
            let lnORCI = ci lnOR
                orci = CI ((exp . lower) lnORCI) ((exp . upper) lnORCI)
             in Right $ OR or orci
+  where a = fromIntegral ea
+        b = n1 - a
+        c = fromIntegral eb
+        d = n2 - c
+        n1 = fromIntegral na
+        n2 = fromIntegral nb
+
+riskDifference :: Study -> Either String RD
+riskDifference (ContinuousStudy _ _ _ _ _ _ _) =
+  Left "Outcome not Binary"
+riskDifference (BinaryStudy stid ea na eb nb) =
+  let rd = (a/n1) - (c/n2) -- (5.15)
+      var = (a * b) / n1^3 + (c * d) / n2^3 -- (5.16)
+   in Right $ RD rd var
   where a = fromIntegral ea
         b = n1 - a
         c = fromIntegral eb

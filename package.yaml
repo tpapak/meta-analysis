@@ -34,7 +34,7 @@ library:
    - cassava
   exposed-modules:
    - Data.Numerics
-   - Data.Meta
+   - Data.Meta.Effects
 
 executables:
   meta-analysis-exe:

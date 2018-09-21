@@ -1,4 +1,4 @@
-module Test.Meta where
+module Test.Meta.Effects where
 
 import           Data.Maybe
 
@@ -12,7 +12,7 @@ import Data.Either
 import           TestHS
 
 import Data.Numerics
-import           Data.Meta
+import           Data.Meta.Effects
 
 {-fastTests :: [Test]-}
 {-fastTests = [ -}
@@ -27,6 +27,7 @@ ioTests = [ test1
           , testLogOR
           , testRR
           , testOR
+          , testRD
           ]
 
 test1 :: IO Test
@@ -233,3 +234,52 @@ testOR = do
          else
            return $ testFailed name $ ("wrong ORs",show estimates <> show correctORs)
 
+
+testRD :: IO Test
+testRD = do
+  let name = "Risk Difference"
+  let studiesFile = "test/binary.csv"
+  csvData <- B.readFile studiesFile
+  let estudies = C.decodeByName csvData
+               :: Either String (C.Header, V.Vector Study)
+  case estudies of
+    Left err -> return $ testFailed name $ ("error parsing csv",err)
+    Right (_, studies) -> do
+      let rds = rights $ V.toList $ V.map riskDifference studies
+          estimates  = map ((\s -> (roundDouble s 4)) . effect) rds
+          cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rds
+          cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rds
+          correctRDs = [ -0.0615
+                       , -0.0500
+                       , -0.0625
+                       , -0.1375
+                       , -0.0750
+                       , -0.0308
+                       ]
+          correctcil = [ -0.2025
+                       , -0.2327
+                       , -0.1875
+                       , -0.1833
+                       , -0.2608
+                       , -0.1818
+                       ]
+          correctciu = [ 0.0794
+                       , 0.1327
+                       , 0.0625
+                       ,-0.0917
+                       , 0.1108
+                       , 0.1202
+                       ] 
+      if estimates == correctRDs
+        then
+          if (correctciu == cius)
+            then
+              if (correctcil == cils)
+                then
+                  return $ testPassed name $ "passed!"
+                else
+                  return $ testFailed name (show correctcil, "\n wrong RDs CIs lower" <> show cils)
+              else
+                return $ testFailed name (show correctciu, "\n wrong RDs CIs upper" <> show cius)
+         else
+           return $ testFailed name $ (show correctRDs, "wrong RDs" <> show estimates)

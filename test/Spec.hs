@@ -1,8 +1,8 @@
 import qualified TestHS as T
-import Test.Meta as Meta
+import Test.Meta.Effects as Effects
 
 main :: IO ()
 main = do
   putStrLn "\n"
   putStrLn $ "Test Begins"
-  T.reportTestsIO $ Meta.ioTests 
+  T.reportTestsIO $ Effects.ioTests 
