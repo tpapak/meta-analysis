@@ -35,6 +35,7 @@ library:
   exposed-modules:
    - Data.Numerics
    - Data.Meta.Effects
+   - Data.Meta.CommonEffect
 
 executables:
   meta-analysis-exe:

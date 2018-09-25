@@ -14,20 +14,30 @@ following Borenstein et al's Introduction to Meta-Analysis
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Data.Meta.Effects
   ( TreatmentId (..)
   , Study (..)
+  , PointEstimate (..)
+  , Variance (..)
+  -- * Effect class
   , Effect (..)
+  -- * Gaussian effect class
   , Gaussian (..)
+  -- ** Continuous
   , MD (..)
   , SMD (..)
+  -- ** Binary
   , LogRR (..)
   , LogOR (..)
   , OR (..)
   , RR (..)
   , RD (..)
   , ConfidenceInterval (..)
+  , isBinary
+  , isContinuous
+  , normalCI
   , meanDifference
   , standardizedMeanDifference
   , logRiskRatio
@@ -35,6 +45,10 @@ module Data.Meta.Effects
   , logOddsRatio
   , oddsRatio
   , riskDifference
+  , logORToOR
+  , orToLogOR
+  , logRRToRR
+  , rrToLogRR
   ) where
 
 import           Control.Applicative
@@ -77,35 +91,50 @@ instance C.FromRecord Study
 instance C.FromNamedRecord Study
 instance C.ToNamedRecord Study
 
+isBinary :: Study -> Bool
+isBinary (BinaryStudy stid ea na eb nb) = True
+isBinary _ = False
+
+isContinuous = not . isBinary
+
+type PointEstimate = Double
+type Variance = Double
+type StandardError = Double
+data ConfidenceInterval = CI { lower :: Double
+                             , upper :: Double
+                             }
+  deriving (Generic,Read,Ord,Eq,Show)
+
+invcumul975 = 1.959964
+
 -- | get the confidence interval of an effect given its variance
 normalCI :: Gaussian g => g -> ConfidenceInterval
 normalCI d =
   let μ = expectation d  
       v = variance d
       se = sqrt v
-   in CI (μ - 1.959964 * se) (μ + 1.959964 * se)
+   in CI (μ - invcumul975 * se) (μ + invcumul975 * se)
 
-type PointEstimate = Double
-type Variance = Double
-type StandardError = Double
-data ConfidenceInterval = CI { lower :: !Double
-                             , upper :: !Double
-                             }
-  deriving (Generic,Read,Ord,Eq,Show)
+ciToVariance :: ConfidenceInterval -> Variance
+ciToVariance (CI l u) =
+  let sd = (u - l) / (2 * invcumul975)
+   in sd^2
 
 class Effect e where
-  effect :: e -> PointEstimate -- ^ the point estimate
+  effect :: e -> Double -- ^ the point estimate
   ci :: e -> ConfidenceInterval -- ^ lower upper values of 95% confidence interval
+  mapEffect :: (Double -> Double) -> e -> e
 
 class Gaussian e where
-  expectation :: e -> PointEstimate
-  variance :: e -> Variance
+  expectation :: e -> Double
+  variance :: e -> Double
 
-data MD = MD PointEstimate Variance -- ^ Mean difference
-  deriving (Generic,Read,Ord,Eq,Show)
+data MD = MD Double Double -- ^ Mean difference
+  deriving (Read,Ord,Eq,Show)
 instance Effect MD where
   effect (MD p v) = p
   ci = normalCI
+  mapEffect f (MD p v) = MD (f p) (f v)
 instance Gaussian MD where
   expectation (MD p v) = p
   variance (MD p v) = v
@@ -115,6 +144,7 @@ data SMD = SMD PointEstimate Variance -- ^ Standardized Mean Difference
 instance Effect SMD where
   effect (SMD p v) = p
   ci = normalCI
+  mapEffect f (SMD p v) = SMD (f p) (f v)
 instance Gaussian SMD where
   expectation (SMD p v) = p
   variance (SMD p v) = v
@@ -124,6 +154,7 @@ data LogOR = LogOR PointEstimate Variance -- ^ Log Odds Ratio
 instance Effect LogOR where
   effect (LogOR p v) = p
   ci = normalCI
+  mapEffect f (LogOR p v) = LogOR (f p) (f v)
 instance Gaussian LogOR where
   expectation (LogOR p v) = p
   variance (LogOR p v) = v
@@ -133,6 +164,7 @@ data LogRR = LogRR PointEstimate Variance -- ^ Log Risk Ratio
 instance Effect LogRR where
   effect (LogRR p v) = p
   ci = normalCI
+  mapEffect f (LogRR p v) = LogRR (f p) (f v)
 instance Gaussian LogRR where
   expectation (LogRR p v) = p
   variance (LogRR p v) = v
@@ -142,18 +174,27 @@ data OR = OR PointEstimate ConfidenceInterval -- ^ Odds Ratio
 instance Effect OR where
   effect (OR p ci) = p
   ci (OR p ci) = ci
+  mapEffect f (OR p ci) = 
+    let nl = f $ lower ci
+        nu = f $ upper ci
+     in OR (f p) (CI nl nu)
 
 data RR = RR PointEstimate ConfidenceInterval -- ^ Risk Ratio
   deriving (Generic,Read,Ord,Eq,Show)
 instance Effect RR where
   effect (RR p ci) = p
   ci (RR p ci) = ci
+  mapEffect f (RR p ci) = 
+    let nl = f $ lower ci
+        nu = f $ upper ci
+     in RR (f p) (CI nl nu)
 
 data RD = RD PointEstimate Variance -- ^ Risk Difference
   deriving (Generic,Read,Ord,Eq,Show)
 instance Effect RD where
   effect (RD p v) = p
   ci = normalCI
+  mapEffect f (RD p v) = RD (f p) (f v)
 instance Gaussian RD where
   expectation (RD p v) = p
   variance (RD p v) = v
@@ -254,6 +295,32 @@ oddsRatio (BinaryStudy stid ea na eb nb) =
         d = n2 - c
         n1 = fromIntegral na
         n2 = fromIntegral nb
+
+logORToOR :: LogOR -> OR
+logORToOR e = 
+  let p = exp $ effect e
+      lnORCI = ci e
+      orci = CI ((exp . lower) lnORCI) ((exp . upper) lnORCI)
+   in OR p orci
+
+orToLogOR :: OR -> LogOR
+orToLogOR (OR e (CI l u)) = 
+  let pe = log e
+      ci = CI (log l) (log u)
+   in LogOR pe (ciToVariance ci)
+
+logRRToRR :: LogRR -> RR
+logRRToRR e = 
+  let p = exp $ effect e
+      lnRRCI = ci e
+      rrci = CI ((exp . lower) lnRRCI) ((exp . upper) lnRRCI)
+   in RR p rrci
+
+rrToLogRR :: RR -> LogRR
+rrToLogRR (RR e (CI l u)) = 
+  let pe = log e
+      ci = CI (log l) (log u)
+   in LogRR pe (ciToVariance ci)
 
 riskDifference :: Study -> Either String RD
 riskDifference (ContinuousStudy _ _ _ _ _ _ _) =
