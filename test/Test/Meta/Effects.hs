@@ -155,7 +155,7 @@ testRR = do
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
       let rrs = rights $ V.toList $ V.map riskRatio studies
-          estimates  = map ((\s -> (roundDouble s 4)) . effect) rrs
+          estimates  = map ((\s -> (roundDouble s 4)) . point) rrs
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rrs
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rrs
           correctRRs = [ 0.7500
@@ -200,7 +200,7 @@ testOR = do
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
       let ors = rights $ V.toList $ V.map oddsRatio studies
-          estimates  = map ((\s -> (roundDouble s 4)) . effect) ors
+          estimates  = map ((\s -> (roundDouble s 4)) . point) ors
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) ors
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) ors
           correctORs = [ 0.6934 
@@ -246,7 +246,7 @@ testRD = do
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
       let rds = rights $ V.toList $ V.map riskDifference studies
-          estimates  = map ((\s -> (roundDouble s 4)) . effect) rds
+          estimates  = map ((\s -> (roundDouble s 4)) . point) rds
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rds
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rds
           correctRDs = [ -0.0615

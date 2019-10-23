@@ -1,9 +1,9 @@
 name:                meta-analysis
-version:             0.1.0.0
+version:             0.1.1.0
 github:              "tpapak/meta-analysis"
 license:             GPL-3
 author:              "Thodoris Papakonstantinou"
-maintainer:          "mail@tpapak.com"
+maintainer:          "hi@tpapak.com"
 copyright:           "2018 Thodoris Papakonstantinou"
 
 extra-source-files:
@@ -36,6 +36,7 @@ library:
    - Data.Numerics
    - Data.Meta.Effects
    - Data.Meta.CommonEffect
+   - Data.Meta.RandomEffects
 
 executables:
   meta-analysis-exe:

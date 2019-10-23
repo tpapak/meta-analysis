@@ -22,8 +22,8 @@ module Data.Meta.Effects
   , PointEstimate (..)
   , Variance (..)
   -- * Effect class
-  , Effect (..)
-  -- * Gaussian effect class
+  , Estimate (..)
+  -- * Gaussian estimate class
   , Gaussian (..)
   -- ** Continuous
   , MD (..)
@@ -38,6 +38,8 @@ module Data.Meta.Effects
   , isBinary
   , isContinuous
   , normalCI
+  , ciToVariance
+  , invcumul975
   , meanDifference
   , standardizedMeanDifference
   , logRiskRatio
@@ -120,10 +122,10 @@ ciToVariance (CI l u) =
   let sd = (u - l) / (2 * invcumul975)
    in sd^2
 
-class Effect e where
-  effect :: e -> Double -- ^ the point estimate
+class Estimate e where
+  point :: e -> Double -- ^ the point estimate
   ci :: e -> ConfidenceInterval -- ^ lower upper values of 95% confidence interval
-  mapEffect :: (Double -> Double) -> e -> e
+  mapEstimate :: (Double -> Double) -> e -> e
 
 class Gaussian e where
   expectation :: e -> Double
@@ -131,70 +133,70 @@ class Gaussian e where
 
 data MD = MD Double Double -- ^ Mean difference
   deriving (Read,Ord,Eq,Show)
-instance Effect MD where
-  effect (MD p v) = p
+instance Estimate MD where
+  point (MD p v) = p
   ci = normalCI
-  mapEffect f (MD p v) = MD (f p) (f v)
+  mapEstimate f (MD p v) = MD (f p) (f v)
 instance Gaussian MD where
   expectation (MD p v) = p
   variance (MD p v) = v
 
 data SMD = SMD PointEstimate Variance -- ^ Standardized Mean Difference
   deriving (Generic,Read,Ord,Eq,Show)
-instance Effect SMD where
-  effect (SMD p v) = p
+instance Estimate SMD where
+  point (SMD p v) = p
   ci = normalCI
-  mapEffect f (SMD p v) = SMD (f p) (f v)
+  mapEstimate f (SMD p v) = SMD (f p) (f v)
 instance Gaussian SMD where
   expectation (SMD p v) = p
   variance (SMD p v) = v
 
 data LogOR = LogOR PointEstimate Variance -- ^ Log Odds Ratio
   deriving (Generic,Read,Ord,Eq,Show)
-instance Effect LogOR where
-  effect (LogOR p v) = p
+instance Estimate LogOR where
+  point (LogOR p v) = p
   ci = normalCI
-  mapEffect f (LogOR p v) = LogOR (f p) (f v)
+  mapEstimate f (LogOR p v) = LogOR (f p) (f v)
 instance Gaussian LogOR where
   expectation (LogOR p v) = p
   variance (LogOR p v) = v
 
 data LogRR = LogRR PointEstimate Variance -- ^ Log Risk Ratio
   deriving (Generic,Read,Ord,Eq,Show)
-instance Effect LogRR where
-  effect (LogRR p v) = p
+instance Estimate LogRR where
+  point (LogRR p v) = p
   ci = normalCI
-  mapEffect f (LogRR p v) = LogRR (f p) (f v)
+  mapEstimate f (LogRR p v) = LogRR (f p) (f v)
 instance Gaussian LogRR where
   expectation (LogRR p v) = p
   variance (LogRR p v) = v
 
 data OR = OR PointEstimate ConfidenceInterval -- ^ Odds Ratio
   deriving (Generic,Read,Ord,Eq,Show)
-instance Effect OR where
-  effect (OR p ci) = p
+instance Estimate OR where
+  point (OR p ci) = p
   ci (OR p ci) = ci
-  mapEffect f (OR p ci) = 
+  mapEstimate f (OR p ci) = 
     let nl = f $ lower ci
         nu = f $ upper ci
      in OR (f p) (CI nl nu)
 
 data RR = RR PointEstimate ConfidenceInterval -- ^ Risk Ratio
   deriving (Generic,Read,Ord,Eq,Show)
-instance Effect RR where
-  effect (RR p ci) = p
+instance Estimate RR where
+  point (RR p ci) = p
   ci (RR p ci) = ci
-  mapEffect f (RR p ci) = 
+  mapEstimate f (RR p ci) = 
     let nl = f $ lower ci
         nu = f $ upper ci
      in RR (f p) (CI nl nu)
 
 data RD = RD PointEstimate Variance -- ^ Risk Difference
   deriving (Generic,Read,Ord,Eq,Show)
-instance Effect RD where
-  effect (RD p v) = p
+instance Estimate RD where
+  point (RD p v) = p
   ci = normalCI
-  mapEffect f (RD p v) = RD (f p) (f v)
+  mapEstimate f (RD p v) = RD (f p) (f v)
 instance Gaussian RD where
   expectation (RD p v) = p
   variance (RD p v) = v
@@ -298,7 +300,7 @@ oddsRatio (BinaryStudy stid ea na eb nb) =
 
 logORToOR :: LogOR -> OR
 logORToOR e = 
-  let p = exp $ effect e
+  let p = exp $ point e
       lnORCI = ci e
       orci = CI ((exp . lower) lnORCI) ((exp . upper) lnORCI)
    in OR p orci
@@ -311,7 +313,7 @@ orToLogOR (OR e (CI l u)) =
 
 logRRToRR :: LogRR -> RR
 logRRToRR e = 
-  let p = exp $ effect e
+  let p = exp $ point e
       lnRRCI = ci e
       rrci = CI ((exp . lower) lnRRCI) ((exp . upper) lnRRCI)
    in RR p rrci

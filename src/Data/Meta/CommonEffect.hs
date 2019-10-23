@@ -31,7 +31,7 @@ import Data.Numerics
 import Data.Meta.Effects
 
 -- | Common Effect
-class Effect a => CommonEffect a where
+class Estimate a => CommonEffect a where
   commonEffect :: [a] -> a
 
 instance CommonEffect MD where
@@ -39,7 +39,7 @@ instance CommonEffect MD where
     let ws = fmap (\e -> 1 / (variance e)) effects
         nrm = sum ws
         -- (11.3)
-        pe = foldl' (\ac (e, w) -> (ac + ((effect e) * w)/nrm)) 0 $ zip effects ws
+        pe = foldl' (\ac (e, w) -> (ac + ((point e) * w)/nrm)) 0 $ zip effects ws
         -- (11.4)
         var = 1 / nrm
      in (MD pe var)
@@ -49,7 +49,7 @@ instance CommonEffect SMD where
     let ws = fmap (\e -> 1 / (variance e)) effects
         nrm = sum ws
         -- (11.3)
-        pe = foldl' (\ac (e, w) -> (ac + ((effect e) * w)/nrm)) 0 $ zip effects ws
+        pe = foldl' (\ac (e, w) -> (ac + ((point e) * w)/nrm)) 0 $ zip effects ws
         -- (11.4)
         var = 1 / nrm
      in (SMD pe var)
@@ -59,7 +59,7 @@ instance CommonEffect LogOR where
     let ws = fmap (\e -> 1 / (variance e)) effects
         nrm = sum ws
         -- (11.3)
-        pe = foldl' (\ac (e, w) -> (ac + ((effect e) * w)/nrm)) 0 $ zip effects ws
+        pe = foldl' (\ac (e, w) -> (ac + ((point e) * w)/nrm)) 0 $ zip effects ws
         -- (11.4)
         var = 1 / nrm
      in (LogOR pe var)
@@ -69,7 +69,7 @@ instance CommonEffect LogRR where
     let ws = fmap (\e -> 1 / (variance e)) effects
         nrm = sum ws
         -- (11.3)
-        pe = foldl' (\ac (e, w) -> (ac + ((effect e) * w)/nrm)) 0 $ zip effects ws
+        pe = foldl' (\ac (e, w) -> (ac + ((point e) * w)/nrm)) 0 $ zip effects ws
         -- (11.4)
         var = 1 / nrm
      in (LogRR pe var)
@@ -79,7 +79,7 @@ instance CommonEffect RD where
     let ws = fmap (\e -> 1 / (variance e)) effects
         nrm = sum ws
         -- (11.3)
-        pe = foldl' (\ac (e, w) -> (ac + ((effect e) * w)/nrm)) 0 $ zip effects ws
+        pe = foldl' (\ac (e, w) -> (ac + ((point e) * w)/nrm)) 0 $ zip effects ws
         -- (11.4)
         var = 1 / nrm
      in (RD pe var)

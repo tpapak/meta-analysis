@@ -1,6 +1,7 @@
 import qualified TestHS as T
 import Test.Meta.Effects as Effects
 import Test.Meta.CommonEffect as CommonEffect
+import Test.Meta.RandomEffects as RandomEffects
 
 main :: IO ()
 main = do
@@ -8,3 +9,4 @@ main = do
   putStrLn $ "Test Begins"
   T.reportTestsIO $ Effects.ioTests 
   T.reportTestsIO $ CommonEffect.ioTests 
+  T.reportTestsIO $ RandomEffects.ioTests 
