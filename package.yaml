@@ -1,5 +1,5 @@
 name:                meta-analysis
-version:             0.1.1.0
+version:             0.1.2.0
 github:              "tpapak/meta-analysis"
 license:             GPL-3
 author:              "Thodoris Papakonstantinou"
@@ -22,6 +22,7 @@ description:         Please see the README on GitHub at <https://github.com/tpap
 dependencies:
 - base >= 4.7 && < 5
 
+
 library:
   source-dirs: src
   dependencies:
@@ -32,11 +33,11 @@ library:
    - text
    - split
    - cassava
-  exposed-modules:
-   - Data.Numerics
-   - Data.Meta.Effects
-   - Data.Meta.CommonEffect
-   - Data.Meta.RandomEffects
+  #exposed-modules:
+   #- Data.Numerics
+   #- Data.Meta.Effects
+   #- Data.Meta.CommonEffect
+   #- Data.Meta.RandomEffects
 
 executables:
   meta-analysis-exe:
