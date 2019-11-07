@@ -84,14 +84,14 @@ instance CommonEffect RD where
         var = 1 / nrm
      in (RD pe var)
 
-instance CommonEffect RR where
-  commonEffect effects =
-    let lefs = fmap rrToLogRR effects
-        lce = commonEffect lefs
-     in logRRToRR lce
-
 instance CommonEffect OR where
   commonEffect effects =
     let lefs = fmap orToLogOR effects
         lce = commonEffect lefs
      in logORToOR lce
+
+instance CommonEffect RR where
+  commonEffect effects =
+    let lefs = fmap rrToLogRR effects
+        lce = commonEffect lefs
+     in logRRToRR lce
