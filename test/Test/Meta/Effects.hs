@@ -36,7 +36,7 @@ test1 = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeWith C.defaultDecodeOptions C.HasHeader csvData
-               :: Either String (V.Vector Study)
+               :: Either String (V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right studies -> do
@@ -50,7 +50,7 @@ test2 = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
@@ -64,11 +64,11 @@ test3 = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let meandiffs = V.toList $ V.map meanDifference studies
+      let meandiffs = V.toList $ V.map (meanDifference . pairwiseStudyToArms) studies
       {-putStrLn "mean differences of continuous"-}
       {-putStrLn $ show $ rights meandiffs-}
       return $ testPassed name $ "passed!"
@@ -79,12 +79,12 @@ test4 = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
       {-putStrLn "standardized mean differences of continuous"-}
-      let smds = rights $ V.toList $ V.map standardizedMeanDifference studies
+      let smds = rights $ V.toList $ V.map (standardizedMeanDifference . pairwiseStudyToArms) studies
           gs   = map ((\s -> (roundDouble s 3)) . expectation) smds
           vgs  = map ((\s -> (roundDouble s 3)) . variance) smds
           correctgs = [ 0.095
@@ -113,11 +113,11 @@ testLogOR = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let lnORs = rights $ V.toList $ V.map logOddsRatio studies
+      let lnORs = rights $ V.toList $ V.map (logOddsRatio . pairwiseStudyToArms) studies
           estimates  = map ((\s -> (roundDouble s 4)) . expectation) lnORs
           variances  = map ((\s -> (roundDouble s 4)) . variance) lnORs
           correctlnORs = [ -0.3662
@@ -150,11 +150,11 @@ testRR = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let rrs = rights $ V.toList $ V.map riskRatio studies
+      let rrs = rights $ V.toList $ V.map (riskRatio . pairwiseStudyToArms) studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) rrs
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rrs
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rrs
@@ -195,11 +195,11 @@ testOR = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let ors = rights $ V.toList $ V.map oddsRatio studies
+      let ors = rights $ V.toList $ V.map (oddsRatio . pairwiseStudyToArms) studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) ors
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) ors
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) ors
@@ -241,11 +241,11 @@ testRD = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let rds = rights $ V.toList $ V.map riskDifference studies
+      let rds = rights $ V.toList $ V.map (riskDifference . pairwiseStudyToArms) studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) rds
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rds
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rds

@@ -13,7 +13,7 @@ import           TestHS
 
 import Data.Numerics
 import           Data.Meta.Effects
-import           Data.Meta.RandomEffects
+import           Data.Meta.Pairwise.RandomEffects
 
 {-fastTests :: [Test]-}
 {-fastTests = [ -}
@@ -34,11 +34,11 @@ smd = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap standardizedMeanDifference $ V.toList studies 
+      let emds = rights $ fmap (standardizedMeanDifference . pairwiseStudyToArms) $ V.toList studies 
       let ce = summary $ randomEffects emds
       let (SMD e v) = ce
       let foundce = (mapEstimate (\c -> roundDouble c 4) (SMD e v))
@@ -55,11 +55,11 @@ rr = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap riskRatio $ V.toList studies 
+      let emds = rights $ fmap (riskRatio .pairwiseStudyToArms) $ V.toList studies 
       let ce = randomEffectsRR emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RR 0.6395 (CI 0.4283 0.9548)
@@ -75,11 +75,11 @@ testor = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap oddsRatio $ V.toList studies 
+      let emds = rights $ fmap (oddsRatio . pairwiseStudyToArms) $ V.toList studies 
       let ce = randomEffectsOR emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = OR 0.5676 (CI 0.3554 0.9065)
@@ -95,11 +95,11 @@ testrd = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap riskDifference $ V.toList studies 
+      let emds = rights $ fmap (riskDifference . pairwiseStudyToArms) $ V.toList studies 
       let ce = summary $ randomEffects emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RD (-0.1119) $ roundDouble (ciToVariance (CI (-0.1499) (-0.0739))) 4
@@ -115,11 +115,12 @@ testtau = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap standardizedMeanDifference $ V.toList studies 
+      let emds = rights $ fmap (standardizedMeanDifference . pairwiseStudyToArms)
+               $ V.toList studies 
       let ce = randomEffects emds
       let foundce = (mapEstimate (\c -> roundDouble c 6) (τsq ce))
       let expected = TauSquare 0.037311 0.001761 (CI 0 0.131214360151206)

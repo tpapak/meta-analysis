@@ -1,5 +1,5 @@
 {-|
-Module      : Meta.RandomEffects
+module      : Meta.Pairwise.RandomEffects
 Description : Random effects meta-analysis
 Copyright   : (c) Thodoris Papakonstantinou, 2018
 License     : GPL-3
@@ -12,7 +12,7 @@ Random effects study synthesis asumes every study has its own true effect \(θ_i
 normally distributed around the summary effect.
 -}
 
-module Data.Meta.RandomEffects
+module Data.Meta.Pairwise.RandomEffects
   ( RandomEffectsClass (..)
   , RandomEffects (..)
   , TauSquare (..)

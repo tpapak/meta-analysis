@@ -1,5 +1,5 @@
 {-|
-Module      : Meta.CommonEffect
+Module      : Meta.Pairwise.CommonEffect
 Description : Common or Fixed effect meta-analysis
 Copyright   : (c) Thodoris Papakonstantinou, 2018
 License     : GPL-3
@@ -16,7 +16,7 @@ Common Effect analysis asumes all studies share a single true effect.
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Data.Meta.CommonEffect
+module Data.Meta.Pairwise.CommonEffect
   ( CommonEffect (..)
   ) where
 

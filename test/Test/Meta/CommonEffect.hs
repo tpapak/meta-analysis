@@ -13,7 +13,7 @@ import           TestHS
 
 import Data.Numerics
 import           Data.Meta.Effects
-import           Data.Meta.CommonEffect
+import           Data.Meta.Pairwise.CommonEffect
 
 {-fastTests :: [Test]-}
 {-fastTests = [ -}
@@ -32,11 +32,11 @@ smd = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap standardizedMeanDifference $ V.toList studies 
+      let emds = rights $ fmap standardizedMeanDifference $ map pairwiseStudyToArms $ V.toList studies
       let ce = commonEffect emds
       let (SMD e v) = ce
       let foundce = (mapEstimate (\c -> roundDouble c 4) (SMD e v))
@@ -53,11 +53,11 @@ rr = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap riskRatio $ V.toList studies 
+      let emds = rights $ fmap riskRatio $ map pairwiseStudyToArms $ V.toList studies
       let ce = commonEffect emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RR 0.5775 (CI 0.4511 0.7392)
@@ -73,11 +73,11 @@ testrd = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector Study)
+               :: Either String (C.Header, V.Vector PairwiseStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap riskDifference $ V.toList studies 
+      let emds = rights $ fmap riskDifference $ map pairwiseStudyToArms $ V.toList studies
       let ce = commonEffect emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RD (-0.1119) $ roundDouble (ciToVariance (CI (-0.1499) (-0.0739))) 4

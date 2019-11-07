@@ -19,6 +19,7 @@ following Borenstein et al's Introduction to Meta-Analysis
 module Data.Meta.Effects
   ( TreatmentId (..)
   , Study (..)
+  , PairwiseStudy (..)
   , PointEstimate (..)
   , Variance (..)
   -- * Effect class
@@ -35,8 +36,8 @@ module Data.Meta.Effects
   , RR (..)
   , RD (..)
   , ConfidenceInterval (..)
-  , isBinary
-  , isContinuous
+  , ComparisonId (..)
+  , pairwiseStudyToArms
   , normalCI
   , ciToVariance
   , invcumul975
@@ -54,9 +55,14 @@ module Data.Meta.Effects
   ) where
 
 import           Control.Applicative
+import           Data.Aeson
+import           Data.Aeson.Types
 import qualified Data.Map.Strict     as Map
 import           Data.Maybe
 import           GHC.Generics
+import           Data.List.Split
+import qualified Data.Text           as T
+import qualified Data.Text.Read      as TR
 import qualified Data.Csv             as C
 import Data.Either
 
@@ -68,36 +74,102 @@ data TreatmentId = IntId Int
 instance Show TreatmentId where
   show (IntId tid)    = show tid
   show (StringId tid) = tid
+instance ToJSON TreatmentId
+instance FromJSON TreatmentId
+  where
+    parseJSON = do
+      let outint = withScientific "TreatmentId"
+                   $ \tid -> return (IntId (floor tid))
+          outstr = withText "TreatmentId"
+                   $ \tid -> return (StringId (T.unpack tid))
+       in (\v -> outint v <|> outstr v)
 
-data Study = 
+data StudyId = StIntId Int
+             | StStringId String
+  deriving (Generic,Read,Ord,Eq)
+instance Show StudyId where
+  show (StIntId tid)    = show tid
+  show (StStringId tid) = tid
+instance ToJSON StudyId
+instance FromJSON StudyId
+  where
+    parseJSON = do
+      let outint = withScientific "StudyId"
+                   $ \tid -> return (StIntId (floor tid))
+          outstr = withText "StudyId"
+                   $ \tid -> return (StStringId (T.unpack tid))
+       in (\v -> outint v <|> outstr v)
+
+-- | Easy Study definition for csv reading pairwise studies
+data PairwiseStudy = 
       -- |Constructor for continuous outcomes 
       --  ID, mean, standard deviation, sample size of comparison
-      ContinuousStudy { study :: !String 
-                      , meanA :: !Double
-                      , sdA :: !Double 
-                      , nA :: !Int
-                      , meanB :: !Double
-                      , sdB :: !Double 
-                      , nB :: !Int
-                      }
+      CSVContinuousStudy { study :: !String 
+                         , meanA :: !Double
+                         , sdA :: !Double 
+                         , nA :: !Int
+                         , meanB :: !Double
+                         , sdB :: !Double 
+                         , nB :: !Int
+                         }
       -- |Constructor for binary outcomes 
       --  ID, events and number of participants
-      | BinaryStudy { study :: !String 
-                    , eventsA :: !Int
-                    , nA :: !Int
-                    , eventsB :: !Int
-                    , nB :: !Int
-                    }
+      | CSVBinaryStudy { study :: !String 
+                       , eventsA :: !Int
+                       , nA :: !Int
+                       , eventsB :: !Int
+                       , nB :: !Int
+                       }
   deriving (Generic,Read,Ord,Eq,Show)
-instance C.FromRecord Study
-instance C.FromNamedRecord Study
-instance C.ToNamedRecord Study
+instance C.FromRecord PairwiseStudy
+instance C.FromNamedRecord PairwiseStudy
+instance C.ToNamedRecord PairwiseStudy
 
-isBinary :: Study -> Bool
-isBinary (BinaryStudy stid ea na eb nb) = True
-isBinary _ = False
+data ComparisonId = ComparisonId TreatmentId TreatmentId
+  deriving (Generic,Eq,Ord)
+instance Show ComparisonId where
+  show (ComparisonId a b) =
+     show a ++ ":" ++ show b
+instance ToJSON ComparisonId
+instance FromJSON ComparisonId
+  where
+    parseJSON = do
+      let compstr = withText "ComparisonId"
+                   $ \cid -> do
+                     let textToTid tx =
+                           let etx = TR.decimal (T.pack tx)
+                            in case etx of
+                                 Left ert -> StringId tx
+                                 Right (nid,rst) -> case (T.unpack rst) of
+                                                      "" -> IntId nid
+                                                      _  -> StringId tx
+                         comps = splitOn ":" (T.unpack cid)
+                      in return $ ComparisonId (textToTid (head comps)) (textToTid (last comps))
+       in (\v -> compstr v)
 
-isContinuous = not . isBinary
+this :: ComparisonId -> TreatmentId
+this (ComparisonId a b) = a
+
+that :: ComparisonId -> TreatmentId
+that (ComparisonId a b) = b
+
+type Events = Int
+type SampleSize = Int
+type MeanEffect = Double
+type SDEffect = Double
+
+data Arm = BinaryArm TreatmentId Events SampleSize  
+         | ContinuousArm TreatmentId MeanEffect SDEffect SampleSize
+  deriving (Show, Generic, Ord, Eq)
+
+data Estimate a => Contrast a = 
+  BinaryContrast TreatmentId TreatmentId a |
+  ContinuousContrast TreatmentId TreatmentId a
+  deriving (Show, Ord, Eq)
+
+-- | Long format (one row per Arm) or one row per contrast (inverse variance format)
+data Study = BinaryStudy StudyId [Arm] 
+           | ContinuousStudy StudyId [Arm]
 
 type PointEstimate = Double
 type Variance = Double
@@ -205,24 +277,41 @@ instance Gaussian RD where
 checkCI :: ConfidenceInterval -> Bool
 checkCI (CI l u) = l < u
 
+pairwiseStudyToArms :: PairwiseStudy -> (Arm, Arm)
+pairwiseStudyToArms (CSVBinaryStudy sid ea na eb nb)
+  = ( BinaryArm (StringId "A") ea na
+    , BinaryArm (StringId "B") eb nb
+    )
+pairwiseStudyToArms s
+  = ( ContinuousArm (StringId "A") (meanA s) (sdA s) (nA s)
+    , ContinuousArm (StringId "B") (meanB s) (sdB s) (nB s)
+    )
 
-meanDifference :: Study -> Either String MD
-meanDifference (BinaryStudy _ _ _ _ _) = 
+notCompatibleArms :: (Arm, Arm) -> Bool
+notCompatibleArms ((BinaryArm _ _ _), (BinaryArm _ _ _)) = True
+notCompatibleArms ((ContinuousArm _ _ _ _), (ContinuousArm _ _ _ _)) = True
+notCompatibleArms _ = False
+
+meanDifference :: (Arm, Arm) -> Either String MD
+meanDifference ((BinaryArm _ _ _), _) = 
+  Left "Binary outcome not continuous"
+meanDifference (_, (BinaryArm _ _ _)) = 
   Left "Binary outcome not continuous"
 -- |Not assuming σ1 = σ2 (4.5)
-meanDifference s = Right $ MD (x1 - x2) (sd1^2 / n1 + sd2^2 / n2)
- where x1 = meanA s
-       sd1 = sdA s
-       n1 = fromIntegral $ nA s
-       x2 = meanB s
-       sd2 = sdB s
-       n2 = fromIntegral $ nB s
+meanDifference ( (ContinuousArm tid1 x1 sd1 n1) 
+               , (ContinuousArm tid2 x2 sd2 n2) )
+    = Right $ MD (x1 - x2) (sd1^2 / n1' + sd2^2 / n2')
+ where n1' = fromIntegral $ n1
+       n2' = fromIntegral $ n2
 
 -- | Applied Hedges' correction
-standardizedMeanDifference :: Study -> Either String SMD
-standardizedMeanDifference (BinaryStudy _ _ _ _ _) =
+standardizedMeanDifference :: (Arm, Arm)-> Either String SMD
+standardizedMeanDifference ((BinaryArm _ _ _), _) = 
   Left "Binary outcome not continuous"
-standardizedMeanDifference (ContinuousStudy stid x1 s1 na x2 s2 nb) =
+standardizedMeanDifference (_, (BinaryArm _ _ _)) = 
+  Left "Binary outcome not continuous"
+standardizedMeanDifference ( (ContinuousArm tid1 x1 s1 na) 
+                           , (ContinuousArm tid2 x2 s2 nb) ) =
   let swithin = sqrt $ ((n1 - 1) * s1^2 + (n2 -1) * s2^2) / (n1 + n2 - 2) -- (4.19)
       d = (x1 - x2) / swithin -- (4.18)
       vd = (n1 + n2) / (n1 * n2) + d^2 / (2 * (n1 + n2)) -- (4.20)
@@ -234,25 +323,34 @@ standardizedMeanDifference (ContinuousStudy stid x1 s1 na x2 s2 nb) =
   where n1 = fromIntegral na
         n2 = fromIntegral nb
 
-logRiskRatio :: Study -> Either String LogRR
-logRiskRatio (ContinuousStudy _ _ _ _ _ _ _) =
+
+logRiskRatio :: (Arm, Arm) -> Either String LogRR
+logRiskRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
-logRiskRatio (BinaryStudy stid ea na eb nb) = Right $
+logRiskRatio (_, (ContinuousArm _ _ _ _)) = 
+  Left "Outcome not Binary"
+logRiskRatio ( (BinaryArm _ ea na) 
+             , (BinaryArm _ eb nb) ) =
   let rr = (a/n1) / (c/n2) -- (5.1)
       logrr = log rr -- (5.2)
       var = 1/a - 1/n1 + 1/c - 1/n2 -- (5.3)
-   in LogRR logrr var
+   in Right $ LogRR logrr var
   where a = fromIntegral ea
         c = fromIntegral eb
         n1 = fromIntegral na
         n2 = fromIntegral nb
 
-riskRatio :: Study -> Either String RR
-riskRatio (ContinuousStudy _ _ _ _ _ _ _) =
+riskRatio :: (Arm, Arm) -> Either String RR
+riskRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
-riskRatio (BinaryStudy stid ea na eb nb) =
-  let rr = (a/n1) / (c/n2) -- (5.1)
-      elnRR = logRiskRatio (BinaryStudy stid ea na eb nb)
+riskRatio (_, (ContinuousArm _ _ _ _)) = 
+  Left "Outcome not Binary"
+riskRatio ( (BinaryArm t1 ea na) 
+          , (BinaryArm t2 eb nb) ) =
+  let comparison = ( (BinaryArm t1 ea na) 
+                   , (BinaryArm t2 eb nb) )
+      elnRR = logRiskRatio comparison
+      rr = (a/n1) / (c/n2) -- (5.1)
    in case elnRR of 
          Left err -> Left err
          Right lnRR ->
@@ -264,14 +362,17 @@ riskRatio (BinaryStudy stid ea na eb nb) =
         n1 = fromIntegral na
         n2 = fromIntegral nb
 
-logOddsRatio :: Study -> Either String LogOR
-logOddsRatio (ContinuousStudy _ _ _ _ _ _ _) =
+logOddsRatio :: (Arm, Arm) -> Either String LogOR
+logOddsRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
-logOddsRatio (BinaryStudy stid ea na eb nb) = Right $
+logOddsRatio (_, (ContinuousArm _ _ _ _)) = 
+  Left "Outcome not Binary"
+logOddsRatio ( (BinaryArm _ ea na) 
+             , (BinaryArm _ eb nb) ) = 
   let or = (a*d) / (b*c) -- (5.8)
       logor = log or -- (5.9)
       var = 1/a + 1/b + 1/c + 1/d -- (5.10)
-   in LogOR logor var
+   in Right $ LogOR logor var
   where a = fromIntegral ea
         b = n1 - a
         c = fromIntegral eb
@@ -279,12 +380,17 @@ logOddsRatio (BinaryStudy stid ea na eb nb) = Right $
         n1 = fromIntegral na
         n2 = fromIntegral nb
 
-oddsRatio :: Study -> Either String OR
-oddsRatio (ContinuousStudy _ _ _ _ _ _ _) =
+oddsRatio :: (Arm, Arm) -> Either String OR
+oddsRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
-oddsRatio (BinaryStudy stid ea na eb nb) =
+oddsRatio (_, (ContinuousArm _ _ _ _)) = 
+  Left "Outcome not Binary"
+oddsRatio ( (BinaryArm t1 ea na) 
+          , (BinaryArm t2 eb nb) ) =
   let or = (a*d) / (b*c) -- (5.8)
-      elnOR = logOddsRatio (BinaryStudy stid ea na eb nb)
+      comparison = ( (BinaryArm t1 ea na) 
+                   , (BinaryArm t2 eb nb) )
+      elnOR = logOddsRatio comparison
    in case elnOR of 
          Left err -> Left err
          Right lnOR ->
@@ -324,10 +430,13 @@ rrToLogRR (RR e (CI l u)) =
       ci = CI (log l) (log u)
    in LogRR pe (ciToVariance ci)
 
-riskDifference :: Study -> Either String RD
-riskDifference (ContinuousStudy _ _ _ _ _ _ _) =
+riskDifference :: (Arm, Arm) -> Either String RD
+riskDirfference ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
-riskDifference (BinaryStudy stid ea na eb nb) =
+riskDifference (_, (ContinuousArm _ _ _ _)) = 
+  Left "Outcome not Binary"
+riskDifference ( (BinaryArm t1 ea na) 
+               , (BinaryArm t2 eb nb) ) =
   let rd = (a/n1) - (c/n2) -- (5.15)
       var = (a * b) / n1^3 + (c * d) / n2^3 -- (5.16)
    in Right $ RD rd var
