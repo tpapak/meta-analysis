@@ -17,13 +17,18 @@ following Borenstein et al's Introduction to Meta-Analysis
 {-# LANGUAGE TypeFamilies #-}
 
 module Data.Meta.Effects
-  ( TreatmentId (..)
+  ( StringIntId (..)
+  , TreatmentId (..)
+  , StudyId (..)
   , Study (..)
   , PairwiseStudy (..)
   , PointEstimate (..)
   , Variance (..)
   -- * Effect class
   , Estimate (..)
+  , Contrast (..)
+  , Arm (..)
+  , ComparisonId (..)
   -- * Gaussian estimate class
   , Gaussian (..)
   -- ** Continuous
@@ -36,7 +41,6 @@ module Data.Meta.Effects
   , RR (..)
   , RD (..)
   , ConfidenceInterval (..)
-  , ComparisonId (..)
   , pairwiseStudyToArms
   , normalCI
   , ciToVariance
@@ -68,36 +72,36 @@ import Data.Either
 
 import Data.Numerics
 
-data TreatmentId = IntId Int
+data StringIntId = IntId Int
                  | StringId String
-  deriving (Generic,Read,Ord,Eq)
-instance Show TreatmentId where
+  deriving (Generic,Read, Ord,Eq)
+instance ToJSON StringIntId
+instance Show StringIntId where
   show (IntId tid)    = show tid
   show (StringId tid) = tid
+
+newtype TreatmentId = TreatmentId StringIntId 
+  deriving (Generic, Show, Read,Ord,Eq)
 instance ToJSON TreatmentId
 instance FromJSON TreatmentId
   where
     parseJSON = do
       let outint = withScientific "TreatmentId"
-                   $ \tid -> return (IntId (floor tid))
+                    $ \tid -> return (TreatmentId $ IntId (floor tid))
           outstr = withText "TreatmentId"
-                   $ \tid -> return (StringId (T.unpack tid))
+                    $ \tid -> return (TreatmentId $ StringId (T.unpack tid))
        in (\v -> outint v <|> outstr v)
 
-data StudyId = StIntId Int
-             | StStringId String
-  deriving (Generic,Read,Ord,Eq)
-instance Show StudyId where
-  show (StIntId tid)    = show tid
-  show (StStringId tid) = tid
+newtype StudyId = StudyId StringIntId 
+  deriving (Generic, Show, Read,Ord,Eq)
 instance ToJSON StudyId
 instance FromJSON StudyId
   where
     parseJSON = do
       let outint = withScientific "StudyId"
-                   $ \tid -> return (StIntId (floor tid))
+                    $ \tid -> return (StudyId $ IntId (floor tid))
           outstr = withText "StudyId"
-                   $ \tid -> return (StStringId (T.unpack tid))
+                    $ \tid -> return (StudyId $ StringId (T.unpack tid))
        in (\v -> outint v <|> outstr v)
 
 -- | Easy Study definition for csv reading pairwise studies
@@ -139,10 +143,10 @@ instance FromJSON ComparisonId
                      let textToTid tx =
                            let etx = TR.decimal (T.pack tx)
                             in case etx of
-                                 Left ert -> StringId tx
+                                 Left ert -> TreatmentId $ StringId tx
                                  Right (nid,rst) -> case (T.unpack rst) of
-                                                      "" -> IntId nid
-                                                      _  -> StringId tx
+                                                      "" -> TreatmentId $ IntId nid
+                                                      _  -> TreatmentId $ StringId tx
                          comps = splitOn ":" (T.unpack cid)
                       in return $ ComparisonId (textToTid (head comps)) (textToTid (last comps))
        in (\v -> compstr v)
@@ -160,16 +164,19 @@ type SDEffect = Double
 
 data Arm = BinaryArm TreatmentId Events SampleSize  
          | ContinuousArm TreatmentId MeanEffect SDEffect SampleSize
-  deriving (Show, Generic, Ord, Eq)
+  deriving (Show, Generic, Read, Ord, Eq)
 
+-- | Treatment vs Treatment
 data Estimate a => Contrast a = 
   BinaryContrast TreatmentId TreatmentId a |
   ContinuousContrast TreatmentId TreatmentId a
-  deriving (Show, Ord, Eq)
+  deriving (Show, Read, Ord, Eq)
 
 -- | Long format (one row per Arm) or one row per contrast (inverse variance format)
-data Study = BinaryStudy StudyId [Arm] 
-           | ContinuousStudy StudyId [Arm]
+data Estimate a => Study a = BinaryStudy StudyId [Arm] 
+                           | ContinuousStudy StudyId [Arm]
+                           | InverseVariance StudyId (Contrast a)
+  deriving (Show, Read, Ord, Eq)
 
 type PointEstimate = Double
 type Variance = Double
@@ -279,18 +286,18 @@ checkCI (CI l u) = l < u
 
 pairwiseStudyToArms :: PairwiseStudy -> (Arm, Arm)
 pairwiseStudyToArms (CSVBinaryStudy sid ea na eb nb)
-  = ( BinaryArm (StringId "A") ea na
-    , BinaryArm (StringId "B") eb nb
+  = ( BinaryArm (TreatmentId $ StringId "A") ea na
+    , BinaryArm (TreatmentId $ StringId "B") eb nb
     )
 pairwiseStudyToArms s
-  = ( ContinuousArm (StringId "A") (meanA s) (sdA s) (nA s)
-    , ContinuousArm (StringId "B") (meanB s) (sdB s) (nB s)
+  = ( ContinuousArm (TreatmentId $ StringId "A") (meanA s) (sdA s) (nA s)
+    , ContinuousArm (TreatmentId $ StringId "B") (meanB s) (sdB s) (nB s)
     )
 
-notCompatibleArms :: (Arm, Arm) -> Bool
-notCompatibleArms ((BinaryArm _ _ _), (BinaryArm _ _ _)) = True
-notCompatibleArms ((ContinuousArm _ _ _ _), (ContinuousArm _ _ _ _)) = True
-notCompatibleArms _ = False
+compatibleArms :: (Arm, Arm) -> Bool
+compatibleArms ((BinaryArm _ _ _), (BinaryArm _ _ _)) = True
+compatibleArms ((ContinuousArm _ _ _ _), (ContinuousArm _ _ _ _)) = True
+compatibleArms _ = False
 
 meanDifference :: (Arm, Arm) -> Either String MD
 meanDifference ((BinaryArm _ _ _), _) = 
