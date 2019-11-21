@@ -5,6 +5,10 @@ import           Data.Maybe
 import           Data.Aeson
 import qualified Data.ByteString.Lazy             as B
 import qualified Data.Map.Strict                  as Map
+import qualified Data.Text           as T
+import Data.Text.Lazy (Text)
+import Data.Text.Lazy.IO as I
+import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.Vector as V
 import qualified Data.Csv             as C
 import Data.Either
@@ -28,6 +32,7 @@ ioTests = [ test1
           , testRR
           , testOR
           , testRD
+          , ivstudies
           ]
 
 test1 :: IO Test
@@ -68,7 +73,7 @@ test3 = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let meandiffs = V.toList $ V.map (meanDifference . pairwiseStudyToArms) studies
+      let meandiffs = V.toList $ V.map (meanDifference . pairwiseStudyToComparison) studies
       {-putStrLn "mean differences of continuous"-}
       {-putStrLn $ show $ rights meandiffs-}
       return $ testPassed name $ "passed!"
@@ -84,7 +89,7 @@ test4 = do
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
       {-putStrLn "standardized mean differences of continuous"-}
-      let smds = rights $ V.toList $ V.map (standardizedMeanDifference . pairwiseStudyToArms) studies
+      let smds = rights $ V.toList $ V.map (standardizedMeanDifference . pairwiseStudyToComparison) studies
           gs   = map ((\s -> (roundDouble s 3)) . expectation) smds
           vgs  = map ((\s -> (roundDouble s 3)) . variance) smds
           correctgs = [ 0.095
@@ -117,7 +122,7 @@ testLogOR = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let lnORs = rights $ V.toList $ V.map (logOddsRatio . pairwiseStudyToArms) studies
+      let lnORs = rights $ V.toList $ V.map (logOddsRatio . pairwiseStudyToComparison) studies
           estimates  = map ((\s -> (roundDouble s 4)) . expectation) lnORs
           variances  = map ((\s -> (roundDouble s 4)) . variance) lnORs
           correctlnORs = [ -0.3662
@@ -154,7 +159,7 @@ testRR = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let rrs = rights $ V.toList $ V.map (riskRatio . pairwiseStudyToArms) studies
+      let rrs = rights $ V.toList $ V.map (riskRatio . pairwiseStudyToComparison) studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) rrs
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rrs
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rrs
@@ -199,7 +204,7 @@ testOR = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let ors = rights $ V.toList $ V.map (oddsRatio . pairwiseStudyToArms) studies
+      let ors = rights $ V.toList $ V.map (oddsRatio . pairwiseStudyToComparison) studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) ors
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) ors
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) ors
@@ -245,7 +250,7 @@ testRD = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let rds = rights $ V.toList $ V.map (riskDifference . pairwiseStudyToArms) studies
+      let rds = rights $ V.toList $ V.map (riskDifference . pairwiseStudyToComparison) studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) rds
           cils  = map ((\s -> (roundDouble s 4)) . lower . ci) rds
           cius  = map ((\s -> (roundDouble s 4)) . upper . ci) rds
@@ -283,3 +288,24 @@ testRD = do
                 return $ testFailed name (show correctciu, "\n wrong RDs CIs upper" <> show cius)
          else
            return $ testFailed name $ (show correctRDs, "wrong RDs" <> show estimates)
+
+ivstudies :: IO Test
+ivstudies = do
+  let name = "turn csv to IV MDs by the studyToIVStudy function"
+  let studiesFile = "test/continuous.csv"
+  csvData <- B.readFile studiesFile
+  let estudies = C.decodeByName csvData
+               :: Either String (C.Header, V.Vector PairwiseStudy)
+  case estudies of
+    Left err -> return $ testFailed name $ ("error parsing csv",err)
+    Right (_, pwstudies) -> do
+      let studies = map pairwiseToStudy $ V.toList pwstudies
+          Right mdstudies = sequence $ map (flip studyToIVStudy meanDifference) studies
+          contrasts = map (\(IVStudy sid cnts) -> contrastsToList cnts) mdstudies
+          effects = map getEffectsOfIVStudy mdstudies
+      print $ show studies
+      print $ show mdstudies
+      --I.writeFile "mdivs.json" (encodeToLazyText studies)
+      print $ show contrasts
+      print $ show effects
+      return $ testPassed name $ "passed!"

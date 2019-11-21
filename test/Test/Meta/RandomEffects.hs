@@ -38,7 +38,7 @@ smd = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap (standardizedMeanDifference . pairwiseStudyToArms) $ V.toList studies 
+      let emds = rights $ fmap (standardizedMeanDifference . pairwiseStudyToComparison) $ V.toList studies 
       let ce = summary $ randomEffects emds
       let (SMD e v) = ce
       let foundce = (mapEstimate (\c -> roundDouble c 4) (SMD e v))
@@ -59,7 +59,7 @@ rr = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap (riskRatio .pairwiseStudyToArms) $ V.toList studies 
+      let emds = rights $ fmap (riskRatio .pairwiseStudyToComparison) $ V.toList studies 
       let ce = randomEffectsRR emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RR 0.6395 (CI 0.4283 0.9548)
@@ -79,7 +79,7 @@ testor = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap (oddsRatio . pairwiseStudyToArms) $ V.toList studies 
+      let emds = rights $ fmap (oddsRatio . pairwiseStudyToComparison) $ V.toList studies 
       let ce = randomEffectsOR emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = OR 0.5676 (CI 0.3554 0.9065)
@@ -99,7 +99,7 @@ testrd = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap (riskDifference . pairwiseStudyToArms) $ V.toList studies 
+      let emds = rights $ fmap (riskDifference . pairwiseStudyToComparison) $ V.toList studies 
       let ce = summary $ randomEffects emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RD (-0.1119) $ roundDouble (ciToVariance (CI (-0.1499) (-0.0739))) 4
@@ -119,7 +119,7 @@ testtau = do
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
-      let emds = rights $ fmap (standardizedMeanDifference . pairwiseStudyToArms)
+      let emds = rights $ fmap (standardizedMeanDifference . pairwiseStudyToComparison)
                $ V.toList studies 
       let ce = randomEffects emds
       let foundce = (mapEstimate (\c -> roundDouble c 6) (τsq ce))

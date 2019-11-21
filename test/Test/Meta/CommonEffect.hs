@@ -37,7 +37,7 @@ md = do
     Right (_, studies) -> do
       let
         emds =
-          rights $ map (meanDifference . pairwiseStudyToArms) $ V.toList studies
+          rights $ map (meanDifference . pairwiseStudyToComparison) $ V.toList studies
       let cis = map normalCI emds 
       let ce       = commonEffect emds
       let (MD e v) = ce
@@ -61,7 +61,7 @@ smd = do
     Right (_, studies) -> do
       let emds =
             rights
-              $ fmap (standardizedMeanDifference . pairwiseStudyToArms)
+              $ fmap (standardizedMeanDifference . pairwiseStudyToComparison)
               $ V.toList studies
       let ce        = commonEffect emds
       let (SMD e v) = ce
@@ -84,7 +84,7 @@ rr = do
     Left  err          -> return $ testFailed name $ ("error parsing csv", err)
     Right (_, studies) -> do
       let emds =
-            rights $ fmap (riskRatio . pairwiseStudyToArms) $ V.toList studies
+            rights $ fmap (riskRatio . pairwiseStudyToComparison) $ V.toList studies
       let ce       = commonEffect emds
       let foundce  = (mapEstimate (\c -> roundDouble c 4) ce)
       let expected = RR 0.5775 (CI 0.4511 0.7392)
@@ -105,7 +105,7 @@ testrd = do
     Left  err          -> return $ testFailed name $ ("error parsing csv", err)
     Right (_, studies) -> do
       let
-        emds = rights $ fmap (riskDifference . pairwiseStudyToArms) $ V.toList
+        emds = rights $ fmap (riskDifference . pairwiseStudyToComparison) $ V.toList
           studies
       let ce      = commonEffect emds
       let foundce = (mapEstimate (\c -> roundDouble c 4) ce)

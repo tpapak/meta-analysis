@@ -11,10 +11,7 @@ Chapter 11 Borenstein's Introduction to Meta-Analysis
 Common Effect analysis asumes all studies share a single true effect.
 -}
 
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 module Data.Meta.Pairwise.CommonEffect
   ( CommonEffect (..)
@@ -31,7 +28,7 @@ import Data.Numerics
 import Data.Meta.Effects
 
 -- | Common Effect
-class Estimate a => CommonEffect a where
+class Effect a => CommonEffect a where
   commonEffect :: [a] -> a
 
 instance CommonEffect MD where

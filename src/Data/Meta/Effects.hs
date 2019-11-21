@@ -21,13 +21,18 @@ module Data.Meta.Effects
   , TreatmentId (..)
   , StudyId (..)
   , Study (..)
+  , IVStudy (..)
   , PairwiseStudy (..)
   , PointEstimate (..)
   , Variance (..)
   -- * Effect class
   , Estimate (..)
+  , Effect (..)
+  , Linear (..)
   , Contrast (..)
   , Arm (..)
+  -- * Just a pair of arms
+  , Comparison (..)
   , ComparisonId (..)
   -- * Gaussian estimate class
   , Gaussian (..)
@@ -41,7 +46,9 @@ module Data.Meta.Effects
   , RR (..)
   , RD (..)
   , ConfidenceInterval (..)
-  , pairwiseStudyToArms
+  , tidOfArm
+  , getStudyId
+  , getStudyArms
   , normalCI
   , ciToVariance
   , invcumul975
@@ -56,9 +63,17 @@ module Data.Meta.Effects
   , orToLogOR
   , logRRToRR
   , rrToLogRR
+  , pairwiseStudyToComparison
+  , pairwiseToStudy
+  , armsToComparisons
+  , comparisonToContrast
+  , contrastsToList
+  , studyToIVStudy
+  , getEffectsOfIVStudy
   ) where
 
 import           Control.Applicative
+import           Data.Tuple.Extra
 import           Data.Aeson
 import           Data.Aeson.Types
 import qualified Data.Map.Strict     as Map
@@ -69,19 +84,24 @@ import qualified Data.Text           as T
 import qualified Data.Text.Read      as TR
 import qualified Data.Csv             as C
 import Data.Either
-
+import Data.Text.Lazy (Text)
+import Data.Text.Lazy.IO as I
+import Data.Aeson.Text (encodeToLazyText) 
 import Data.Numerics
 
 data StringIntId = IntId Int
                  | StringId String
-  deriving (Generic,Read, Ord,Eq)
+  deriving (Generic, Read, Ord, Eq)
 instance ToJSON StringIntId
 instance Show StringIntId where
   show (IntId tid)    = show tid
   show (StringId tid) = tid
+instance C.FromRecord StringIntId
+instance C.FromNamedRecord StringIntId
+instance C.ToNamedRecord StringIntId
 
 newtype TreatmentId = TreatmentId StringIntId 
-  deriving (Generic, Show, Read,Ord,Eq)
+  deriving (Generic, Show, Read, Ord, Eq)
 instance ToJSON TreatmentId
 instance FromJSON TreatmentId
   where
@@ -129,6 +149,7 @@ instance C.FromRecord PairwiseStudy
 instance C.FromNamedRecord PairwiseStudy
 instance C.ToNamedRecord PairwiseStudy
 
+
 data ComparisonId = ComparisonId TreatmentId TreatmentId
   deriving (Generic,Eq,Ord)
 instance Show ComparisonId where
@@ -157,25 +178,48 @@ this (ComparisonId a b) = a
 that :: ComparisonId -> TreatmentId
 that (ComparisonId a b) = b
 
+type Comparison = (Arm, Arm)
+
 type Events = Int
 type SampleSize = Int
 type MeanEffect = Double
 type SDEffect = Double
 
+-- | Arm definition for binary and continuous data
 data Arm = BinaryArm TreatmentId Events SampleSize  
          | ContinuousArm TreatmentId MeanEffect SDEffect SampleSize
-  deriving (Show, Generic, Read, Ord, Eq)
+  deriving (Show, Generic, Read, Ord)
+instance Eq Arm
+    where arm1 == arm2 = tidOfArm arm1 == tidOfArm arm2
+instance ToJSON Arm
+instance FromJSON Arm
 
 -- | Treatment vs Treatment
-data Estimate a => Contrast a = 
-  BinaryContrast TreatmentId TreatmentId a |
-  ContinuousContrast TreatmentId TreatmentId a
+data Effect a => Contrast a = Contrast TreatmentId TreatmentId a
   deriving (Show, Read, Ord, Eq)
 
--- | Long format (one row per Arm) or one row per contrast (inverse variance format)
-data Estimate a => Study a = BinaryStudy StudyId [Arm] 
-                           | ContinuousStudy StudyId [Arm]
-                           | InverseVariance StudyId (Contrast a)
+data Effect a => Contrasts a 
+  = Contrasts (Map.Map TreatmentId (Map.Map TreatmentId a))
+  deriving (Show, Read, Ord, Eq)
+
+-- | Study as a collection of treatments (arms). This definitions coveres
+-- multiarm studies
+data Study = BinaryStudy StudyId [Arm] 
+           | ContinuousStudy StudyId [Arm]
+  deriving (Show, Read, Ord, Eq, Generic)
+instance ToJSON Study
+instance FromJSON Study
+
+getStudyId :: Study -> StudyId
+getStudyId (BinaryStudy sid _) = sid
+getStudyId (ContinuousStudy sid _) = sid
+
+getStudyArms :: Study -> [Arm]
+getStudyArms (BinaryStudy sid arms) = arms
+getStudyArms (ContinuousStudy sid arms) = arms
+
+-- | Study as inverse variance estimates
+data Effect a => IVStudy a = IVStudy StudyId (Contrasts a)
   deriving (Show, Read, Ord, Eq)
 
 type PointEstimate = Double
@@ -201,21 +245,36 @@ ciToVariance (CI l u) =
   let sd = (u - l) / (2 * invcumul975)
    in sd^2
 
+-- | Class for propabilistic values with point estimates and uncertainty
 class Estimate e where
   point :: e -> Double -- ^ the point estimate
   ci :: e -> ConfidenceInterval -- ^ lower upper values of 95% confidence interval
   mapEstimate :: (Double -> Double) -> e -> e
+
+class Estimate e => Effect e where
+  isBinary :: e -> Bool -- ^ true if binary outcome false otherwise
+
+class (Effect e , Estimate e) => Linear e where
+  null :: e -> Double
+  translate :: e -> Double -> e
+  negate :: e -> e
 
 class Gaussian e where
   expectation :: e -> Double
   variance :: e -> Double
 
 data MD = MD Double Double -- ^ Mean difference
-  deriving (Read,Ord,Eq,Show)
+  deriving (Read,Ord,Eq,Show, Generic)
 instance Estimate MD where
   point (MD p v) = p
   ci = normalCI
   mapEstimate f (MD p v) = MD (f p) (f v)
+instance Effect MD where
+  isBinary _ = False
+instance Linear MD where
+  null _ = 0
+  translate (MD p v) x = MD (p+x) v
+  negate (MD p v) = MD (-p) v
 instance Gaussian MD where
   expectation (MD p v) = p
   variance (MD p v) = v
@@ -226,6 +285,12 @@ instance Estimate SMD where
   point (SMD p v) = p
   ci = normalCI
   mapEstimate f (SMD p v) = SMD (f p) (f v)
+instance Effect SMD where
+  isBinary _ = False
+instance Linear SMD where
+  null _ = 0
+  translate (SMD p v) x = SMD (p+x) v
+  negate (SMD p v) = SMD (-p) v
 instance Gaussian SMD where
   expectation (SMD p v) = p
   variance (SMD p v) = v
@@ -236,6 +301,12 @@ instance Estimate LogOR where
   point (LogOR p v) = p
   ci = normalCI
   mapEstimate f (LogOR p v) = LogOR (f p) (f v)
+instance Effect LogOR where
+  isBinary _ = True
+instance Linear LogOR where
+  null _ = 0
+  translate (LogOR p v) x = LogOR (p+x) v
+  negate (LogOR p v) = LogOR (-p) v
 instance Gaussian LogOR where
   expectation (LogOR p v) = p
   variance (LogOR p v) = v
@@ -246,6 +317,12 @@ instance Estimate LogRR where
   point (LogRR p v) = p
   ci = normalCI
   mapEstimate f (LogRR p v) = LogRR (f p) (f v)
+instance Effect LogRR where
+  isBinary _ = True
+instance Linear LogRR where
+  null _ = 0
+  translate (LogRR p v) x = LogRR (p+x) v
+  negate (LogRR p v) = LogRR (-p) v
 instance Gaussian LogRR where
   expectation (LogRR p v) = p
   variance (LogRR p v) = v
@@ -259,6 +336,8 @@ instance Estimate OR where
     let nl = f $ lower ci
         nu = f $ upper ci
      in OR (f p) (CI nl nu)
+instance Effect OR where
+  isBinary _ = True
 
 data RR = RR PointEstimate ConfidenceInterval -- ^ Risk Ratio
   deriving (Generic,Read,Ord,Eq,Show)
@@ -269,6 +348,8 @@ instance Estimate RR where
     let nl = f $ lower ci
         nu = f $ upper ci
      in RR (f p) (CI nl nu)
+instance Effect RR where
+  isBinary _ = True
 
 data RD = RD PointEstimate Variance -- ^ Risk Difference
   deriving (Generic,Read,Ord,Eq,Show)
@@ -276,6 +357,12 @@ instance Estimate RD where
   point (RD p v) = p
   ci = normalCI
   mapEstimate f (RD p v) = RD (f p) (f v)
+instance Effect RD where
+  isBinary _ = True
+instance Linear RD where
+  null _ = 0
+  translate (RD p v) x = RD (p+x) v
+  negate (RD p v) = RD (-p) v
 instance Gaussian RD where
   expectation (RD p v) = p
   variance (RD p v) = v
@@ -284,35 +371,85 @@ instance Gaussian RD where
 checkCI :: ConfidenceInterval -> Bool
 checkCI (CI l u) = l < u
 
-pairwiseStudyToArms :: PairwiseStudy -> (Arm, Arm)
-pairwiseStudyToArms (CSVBinaryStudy sid ea na eb nb)
+pairwiseStudyToComparison :: PairwiseStudy -> Comparison
+pairwiseStudyToComparison (CSVBinaryStudy sid ea na eb nb)
   = ( BinaryArm (TreatmentId $ StringId "A") ea na
     , BinaryArm (TreatmentId $ StringId "B") eb nb
     )
-pairwiseStudyToArms s
+pairwiseStudyToComparison s
   = ( ContinuousArm (TreatmentId $ StringId "A") (meanA s) (sdA s) (nA s)
     , ContinuousArm (TreatmentId $ StringId "B") (meanB s) (sdB s) (nB s)
     )
 
-compatibleArms :: (Arm, Arm) -> Bool
-compatibleArms ((BinaryArm _ _ _), (BinaryArm _ _ _)) = True
-compatibleArms ((ContinuousArm _ _ _ _), (ContinuousArm _ _ _ _)) = True
-compatibleArms _ = False
+pairwiseToStudy :: PairwiseStudy -> Study
+pairwiseToStudy (CSVContinuousStudy sid ma sa na mb sb nb) = 
+  let pwst = (CSVContinuousStudy sid ma sa na mb sb nb) 
+      comparison = pairwiseStudyToComparison pwst
+   in ContinuousStudy (StudyId $ StringId sid) [fst comparison, snd comparison]
+pairwiseToStudy (CSVBinaryStudy sid ea na eb nb) = 
+  let pwst = (CSVBinaryStudy sid ea na eb nb)
+      comparison = pairwiseStudyToComparison pwst
+   in BinaryStudy (StudyId $ StringId sid) [fst comparison, snd comparison]
 
-meanDifference :: (Arm, Arm) -> Either String MD
-meanDifference ((BinaryArm _ _ _), _) = 
-  Left "Binary outcome not continuous"
-meanDifference (_, (BinaryArm _ _ _)) = 
-  Left "Binary outcome not continuous"
+tidOfArm :: Arm -> TreatmentId
+tidOfArm (ContinuousArm tidA _ _ _) = tidA
+tidOfArm (BinaryArm tidA _ _) = tidA
+
+comparisonToContrast :: Effect a => (Comparison -> Either String a) 
+               -> Comparison 
+               -> Either String (Contrast a)
+comparisonToContrast getEffect comparison = 
+  let eeffect = getEffect comparison
+      (tidA, tidB) = both tidOfArm comparison
+   in case eeffect of 
+        Left err -> Left err
+        Right effect -> Right $ Contrast tidA tidB effect
+
+armsToComparisons :: [Arm] -> [Comparison]
+armsToComparisons arms = 
+  let allcomps = (,) <$> arms <*> arms
+   in filter (\(a,b) -> a/=b && a < b) allcomps
+
+studyToIVStudy :: Effect a => Study 
+                -> (Comparison -> Either String a) 
+                -> Either String (IVStudy a)
+studyToIVStudy st getEffect =
+  let sid = getStudyId st
+      arms = getStudyArms st
+      eef = sequence $ map (comparisonToContrast getEffect) $ armsToComparisons arms
+   in case eef of
+        Left err -> Left err
+        Right contrasts -> 
+          let cntrs = foldl (\acc (Contrast ta tb ef) -> 
+                      Map.insert ta (Map.singleton tb ef) acc) Map.empty contrasts
+           in Right $ IVStudy sid (Contrasts cntrs)
+
+contrastsToList :: Effect e => Contrasts e -> [Contrast e]
+contrastsToList (Contrasts e) = 
+  let cts = Map.toList e
+   in map (\(ta, tbef) ->
+                    let (tb, ef) = head $ Map.toList tbef
+                     in Contrast ta tb ef
+          ) cts
+
+getEffectsOfIVStudy :: Effect a => IVStudy a -> [a]
+getEffectsOfIVStudy (IVStudy st contrs) =
+  let cts = contrastsToList contrs
+   in map (\(Contrast ta tb ef) -> ef) cts
+
+
+meanDifference :: Comparison -> Either String MD
 -- |Not assuming σ1 = σ2 (4.5)
 meanDifference ( (ContinuousArm tid1 x1 sd1 n1) 
                , (ContinuousArm tid2 x2 sd2 n2) )
     = Right $ MD (x1 - x2) (sd1^2 / n1' + sd2^2 / n2')
  where n1' = fromIntegral $ n1
        n2' = fromIntegral $ n2
+meanDifference (_, _) = 
+  Left "Not continuous outcome"
 
 -- | Applied Hedges' correction
-standardizedMeanDifference :: (Arm, Arm)-> Either String SMD
+standardizedMeanDifference :: Comparison-> Either String SMD
 standardizedMeanDifference ((BinaryArm _ _ _), _) = 
   Left "Binary outcome not continuous"
 standardizedMeanDifference (_, (BinaryArm _ _ _)) = 
@@ -331,7 +468,7 @@ standardizedMeanDifference ( (ContinuousArm tid1 x1 s1 na)
         n2 = fromIntegral nb
 
 
-logRiskRatio :: (Arm, Arm) -> Either String LogRR
+logRiskRatio :: Comparison -> Either String LogRR
 logRiskRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
 logRiskRatio (_, (ContinuousArm _ _ _ _)) = 
@@ -347,7 +484,7 @@ logRiskRatio ( (BinaryArm _ ea na)
         n1 = fromIntegral na
         n2 = fromIntegral nb
 
-riskRatio :: (Arm, Arm) -> Either String RR
+riskRatio :: Comparison -> Either String RR
 riskRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
 riskRatio (_, (ContinuousArm _ _ _ _)) = 
@@ -369,7 +506,7 @@ riskRatio ( (BinaryArm t1 ea na)
         n1 = fromIntegral na
         n2 = fromIntegral nb
 
-logOddsRatio :: (Arm, Arm) -> Either String LogOR
+logOddsRatio :: Comparison -> Either String LogOR
 logOddsRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
 logOddsRatio (_, (ContinuousArm _ _ _ _)) = 
@@ -387,7 +524,7 @@ logOddsRatio ( (BinaryArm _ ea na)
         n1 = fromIntegral na
         n2 = fromIntegral nb
 
-oddsRatio :: (Arm, Arm) -> Either String OR
+oddsRatio :: Comparison -> Either String OR
 oddsRatio ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
 oddsRatio (_, (ContinuousArm _ _ _ _)) = 
@@ -437,7 +574,7 @@ rrToLogRR (RR e (CI l u)) =
       ci = CI (log l) (log u)
    in LogRR pe (ciToVariance ci)
 
-riskDifference :: (Arm, Arm) -> Either String RD
+riskDifference :: Comparison -> Either String RD
 riskDirfference ((ContinuousArm _ _ _ _), _) = 
   Left "Outcome not Binary"
 riskDifference (_, (ContinuousArm _ _ _ _)) = 
