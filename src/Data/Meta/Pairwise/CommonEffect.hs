@@ -19,10 +19,13 @@ module Data.Meta.Pairwise.CommonEffect
 
 import           Control.Applicative
 import qualified Data.Map.Strict     as Map
+import qualified Data.Set as Set
+import qualified Data.IntMap.Strict as IM
 import           Data.Maybe
 import           GHC.Generics
 import Data.Either
 import Data.List
+--import Data.Graph.AdjacencyList
 
 import Data.Numerics
 import Data.Meta.Effects
@@ -30,6 +33,13 @@ import Data.Meta.Effects
 -- | Common Effect
 class Effect a => CommonEffect a where
   commonEffect :: [a] -> a
+
+--data Effect a => EffectGraph a = 
+  --EffectGraph { graph :: Graph
+              --, vsts :: IM.IntMap TreatmentId
+              --, tsvs :: Map.Map TreatmentId Vertex
+              --, effects :: Map.Map Edge [a]
+              --}
 
 instance CommonEffect MD where
   commonEffect effects =

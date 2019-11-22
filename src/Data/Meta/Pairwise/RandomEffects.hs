@@ -16,7 +16,7 @@ module Data.Meta.Pairwise.RandomEffects
   ( RandomEffectsClass (..)
   , RandomEffects (..)
   , TauSquare (..)
-  , ISquare (..)
+  --, ISquare (..)
   , randomEffectsOR
   , randomEffectsRR
   ) where
@@ -38,15 +38,15 @@ instance Estimate TauSquare where
   ci = ci
   mapEstimate f (TauSquare p v c) = TauSquare (f p) (f v) c
  
-data ISquare = ISquare PointEstimate Variance
-  deriving (Read,Ord,Eq,Show)
-instance Gaussian ISquare where
-  expectation (ISquare p v) = p
-  variance (ISquare p v) = v
-instance Estimate ISquare where
-  point (ISquare p v) = p
-  ci = normalCI
-  mapEstimate f (ISquare p v) = ISquare (f p) (f v)
+--data ISquare = ISquare PointEstimate Variance
+  --deriving (Read,Ord,Eq,Show)
+--instance Gaussian ISquare where
+  --expectation (ISquare p v) = p
+  --variance (ISquare p v) = v
+--instance Estimate ISquare where
+  --point (ISquare p v) = p
+  --ci = normalCI
+  --mapEstimate f (ISquare p v) = ISquare (f p) (f v)
 
 -- | Random Effects class
 class (Gaussian a, Estimate a) => RandomEffectsClass a where
@@ -57,10 +57,9 @@ data RandomEffects a =
                 , qq :: Double
                 , df :: Int -- degrees of freedom
                 , τsq :: TauSquare
-                , iisq :: ISquare
                 }
 
-randomeffects' :: Gaussian a => [a] -> (PointEstimate, Variance, Double, Int, TauSquare, ISquare)
+randomeffects' :: Gaussian a => [a] -> (PointEstimate, Variance, Double, Int, TauSquare)
 randomeffects' effects = 
   let ws = fmap (\e -> 1 / (variance e)) effects
       nrm = sum ws
@@ -105,7 +104,7 @@ randomeffects' effects =
       pe' = foldl' (\ac (e, w') -> (ac + ((expectation e) * w')/nrm')) 0 $ zip effects ws'
       -- (12.8)
       var' = 1 / nrm'
-   in (pe', var', qq, df, TauSquare τsq τvar τci, ISquare 1 0)
+   in (pe', var', qq, df, TauSquare τsq τvar τci)
 
 instance RandomEffectsClass MD where
   randomEffects effects = 
@@ -113,9 +112,8 @@ instance RandomEffectsClass MD where
                   , qq = qq
                   , df = df
                   , τsq = tsq
-                  , iisq = isq
                   }
-    where (pe', var', qq, df, tsq, isq) = randomeffects' effects
+    where (pe', var', qq, df, tsq) = randomeffects' effects
 
 instance RandomEffectsClass SMD where
   randomEffects effects = 
@@ -123,9 +121,8 @@ instance RandomEffectsClass SMD where
                   , qq = qq
                   , df = df
                   , τsq = tsq
-                  , iisq = isq
                   }
-    where (pe', var', qq, df, tsq, isq) = randomeffects' effects
+    where (pe', var', qq, df, tsq) = randomeffects' effects
 
 instance RandomEffectsClass LogOR where
   randomEffects effects = 
@@ -133,9 +130,8 @@ instance RandomEffectsClass LogOR where
                   , qq = qq
                   , df = df
                   , τsq = tsq
-                  , iisq = isq
                   }
-    where (pe', var', qq, df, tsq, isq) = randomeffects' effects
+    where (pe', var', qq, df, tsq) = randomeffects' effects
 
 instance RandomEffectsClass LogRR where
   randomEffects effects = 
@@ -143,9 +139,8 @@ instance RandomEffectsClass LogRR where
                   , qq = qq
                   , df = df
                   , τsq = tsq
-                  , iisq = isq
                   }
-    where (pe', var', qq, df, tsq, isq) = randomeffects' effects
+    where (pe', var', qq, df, tsq) = randomeffects' effects
 
 instance RandomEffectsClass RD where
   randomEffects effects = 
@@ -153,9 +148,8 @@ instance RandomEffectsClass RD where
                   , qq = qq
                   , df = df
                   , τsq = tsq
-                  , iisq = isq
                   }
-    where (pe', var', qq, df, tsq, isq) = randomeffects' effects
+    where (pe', var', qq, df, tsq) = randomeffects' effects
 
 randomEffectsRR :: [RR] -> RR
 randomEffectsRR effects =

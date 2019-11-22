@@ -1,5 +1,8 @@
 # Changelog for meta-analysis
 
+- 0.1.7.0
+  Contrasts as map map effect
+
 - 0.1.6.0
   Effect Class definition
 

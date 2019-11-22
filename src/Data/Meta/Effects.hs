@@ -28,8 +28,8 @@ module Data.Meta.Effects
   -- * Effect class
   , Estimate (..)
   , Effect (..)
-  , Linear (..)
   , Contrast (..)
+  , Contrasts (..)
   , Arm (..)
   -- * Just a pair of arms
   , Comparison (..)
@@ -88,6 +88,8 @@ import Data.Text.Lazy (Text)
 import Data.Text.Lazy.IO as I
 import Data.Aeson.Text (encodeToLazyText) 
 import Data.Numerics
+--import Data.Graph.AdjacencyList
+--import Data.Graph.AdjacencyList.Network
 
 data StringIntId = IntId Int
                  | StringId String
@@ -194,12 +196,16 @@ instance Eq Arm
 instance ToJSON Arm
 instance FromJSON Arm
 
--- | Treatment vs Treatment
+-- | Definition of effect of a Treatment A vs Treatment B
 data Effect a => Contrast a = Contrast TreatmentId TreatmentId a
   deriving (Show, Read, Ord, Eq)
 
-data Effect a => Contrasts a 
-  = Contrasts (Map.Map TreatmentId (Map.Map TreatmentId a))
+reverseContrast :: Effect a => Contrast a -> Contrast a
+reverseContrast (Contrast ta tb e) = 
+  Contrast tb ta (reverseEffect e)
+
+-- | Contrasts as map of map of treatments to effects (kind of like an array)
+data Effect a => Contrasts a = Contrasts (Map.Map TreatmentId (Map.Map TreatmentId a))
   deriving (Show, Read, Ord, Eq)
 
 -- | Study as a collection of treatments (arms). This definitions coveres
@@ -253,15 +259,13 @@ class Estimate e where
 
 class Estimate e => Effect e where
   isBinary :: e -> Bool -- ^ true if binary outcome false otherwise
-
-class (Effect e , Estimate e) => Linear e where
   null :: e -> Double
-  translate :: e -> Double -> e
-  negate :: e -> e
+  reverseEffect :: e -> e
 
 class Gaussian e where
   expectation :: e -> Double
   variance :: e -> Double
+  translate :: e -> Double -> e
 
 data MD = MD Double Double -- ^ Mean difference
   deriving (Read,Ord,Eq,Show, Generic)
@@ -271,13 +275,12 @@ instance Estimate MD where
   mapEstimate f (MD p v) = MD (f p) (f v)
 instance Effect MD where
   isBinary _ = False
-instance Linear MD where
   null _ = 0
-  translate (MD p v) x = MD (p+x) v
-  negate (MD p v) = MD (-p) v
+  reverseEffect (MD p v) = MD (-p) v
 instance Gaussian MD where
   expectation (MD p v) = p
   variance (MD p v) = v
+  translate (MD p v) x = MD (p+x) v
 
 data SMD = SMD PointEstimate Variance -- ^ Standardized Mean Difference
   deriving (Generic,Read,Ord,Eq,Show)
@@ -287,13 +290,12 @@ instance Estimate SMD where
   mapEstimate f (SMD p v) = SMD (f p) (f v)
 instance Effect SMD where
   isBinary _ = False
-instance Linear SMD where
   null _ = 0
-  translate (SMD p v) x = SMD (p+x) v
-  negate (SMD p v) = SMD (-p) v
+  reverseEffect (SMD p v) = SMD (-p) v
 instance Gaussian SMD where
   expectation (SMD p v) = p
   variance (SMD p v) = v
+  translate (SMD p v) x = SMD (p+x) v
 
 data LogOR = LogOR PointEstimate Variance -- ^ Log Odds Ratio
   deriving (Generic,Read,Ord,Eq,Show)
@@ -303,13 +305,12 @@ instance Estimate LogOR where
   mapEstimate f (LogOR p v) = LogOR (f p) (f v)
 instance Effect LogOR where
   isBinary _ = True
-instance Linear LogOR where
   null _ = 0
-  translate (LogOR p v) x = LogOR (p+x) v
-  negate (LogOR p v) = LogOR (-p) v
+  reverseEffect (LogOR p v) = LogOR (-p) v
 instance Gaussian LogOR where
   expectation (LogOR p v) = p
   variance (LogOR p v) = v
+  translate (LogOR p v) x = LogOR (p+x) v
 
 data LogRR = LogRR PointEstimate Variance -- ^ Log Risk Ratio
   deriving (Generic,Read,Ord,Eq,Show)
@@ -319,13 +320,12 @@ instance Estimate LogRR where
   mapEstimate f (LogRR p v) = LogRR (f p) (f v)
 instance Effect LogRR where
   isBinary _ = True
-instance Linear LogRR where
   null _ = 0
-  translate (LogRR p v) x = LogRR (p+x) v
-  negate (LogRR p v) = LogRR (-p) v
+  reverseEffect (LogRR p v) = LogRR (-p) v
 instance Gaussian LogRR where
   expectation (LogRR p v) = p
   variance (LogRR p v) = v
+  translate (LogRR p v) x = LogRR (p+x) v
 
 data OR = OR PointEstimate ConfidenceInterval -- ^ Odds Ratio
   deriving (Generic,Read,Ord,Eq,Show)
@@ -338,6 +338,14 @@ instance Estimate OR where
      in OR (f p) (CI nl nu)
 instance Effect OR where
   isBinary _ = True
+  null _ = 1
+  reverseEffect (OR p (CI nl nu)) = 
+    let p' = 1 / p
+        nl' = 1 / nu
+        nu' = 1 / nl
+     in OR p' (CI nl' nu')
+
+
 
 data RR = RR PointEstimate ConfidenceInterval -- ^ Risk Ratio
   deriving (Generic,Read,Ord,Eq,Show)
@@ -350,6 +358,12 @@ instance Estimate RR where
      in RR (f p) (CI nl nu)
 instance Effect RR where
   isBinary _ = True
+  null _ = 1
+  reverseEffect (RR p (CI nl nu)) = 
+    let p' = 1 / p
+        nl' = 1 / nu
+        nu' = 1 / nl
+     in RR p' (CI nl' nu')
 
 data RD = RD PointEstimate Variance -- ^ Risk Difference
   deriving (Generic,Read,Ord,Eq,Show)
@@ -359,13 +373,12 @@ instance Estimate RD where
   mapEstimate f (RD p v) = RD (f p) (f v)
 instance Effect RD where
   isBinary _ = True
-instance Linear RD where
   null _ = 0
-  translate (RD p v) x = RD (p+x) v
-  negate (RD p v) = RD (-p) v
+  reverseEffect (RD p v) = RD (-p) v
 instance Gaussian RD where
   expectation (RD p v) = p
   variance (RD p v) = v
+  translate (RD p v) x = RD (p+x) v
 
 -- | checks if CI is messed up
 checkCI :: ConfidenceInterval -> Bool
@@ -421,7 +434,8 @@ studyToIVStudy st getEffect =
         Left err -> Left err
         Right contrasts -> 
           let cntrs = foldl (\acc (Contrast ta tb ef) -> 
-                      Map.insert ta (Map.singleton tb ef) acc) Map.empty contrasts
+                let acc' = Map.insert ta (Map.singleton tb ef) acc
+                 in Map.insert tb (Map.singleton ta (reverseEffect ef)) acc') Map.empty contrasts
            in Right $ IVStudy sid (Contrasts cntrs)
 
 contrastsToList :: Effect e => Contrasts e -> [Contrast e]

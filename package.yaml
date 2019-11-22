@@ -1,5 +1,5 @@
 name:                meta-analysis
-version:             0.1.6.1
+version:             0.1.7.0
 github:              "tpapak/meta-analysis"
 license:             GPL-3
 author:              "Thodoris Papakonstantinou"
@@ -23,6 +23,7 @@ dependencies:
 - base >= 4.7 && < 5
 - extra
 - text
+#- graph >= 0.4.0.0
 
 
 library:
