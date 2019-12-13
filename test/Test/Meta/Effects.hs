@@ -16,7 +16,9 @@ import           Data.Either
 import           TestHS
 
 import           Data.Numerics
+import Data.Graph.AdjacencyList
 import           Data.Meta.Effects
+import           Data.Meta.Studies
 
 {-fastTests :: [Test]-}
 {-fastTests = [ -}
@@ -278,7 +280,7 @@ reverseRD = do
   case estudies of
     Left  err          -> return $ testFailed name $ ("error parsing csv", err)
     Right (_, studies) -> do
-      let rds = rights $ V.toList $ V.map
+      let rds = map reverseEffect $ rights $ V.toList $ V.map
             (riskDifference . pairwiseStudyToComparison)
             studies
           estimates  = map ((\s -> (roundDouble s 4)) . point) rds
@@ -304,7 +306,7 @@ reverseRD = do
 
 ivstudies :: IO Test
 ivstudies = do
-  let name        = "turn csv to IV MDs by the studyToIVStudy function"
+  let name        = "turn csv to IV MDs and their graph"
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies =
@@ -318,14 +320,14 @@ ivstudies = do
         studies = map pairwiseToStudy $ V.toList pwstudies
         Right mdstudies =
           sequence $ map (flip studyToIVStudy meanDifference) studies
-        contrasts = map (\(IVStudy sid cnts) -> contrastsToList cnts) mdstudies
+        studiesgraph = studiesGraph' mdstudies head
         effects   = map getEffectsOfIVStudy mdstudies
-      print $ show studies
-      print $ show mdstudies
+      --print $ show studies
+      --print $ show mdstudies
       --I.writeFile "mdivs.json" (encodeToLazyText studies)
-      print $ show contrasts
-      print $ show effects
-      return $ testPassed name $ "passed!"
+      --print $ show effects
+      --print $ edges $ directGraph studiesgraph
+      return $ testPassed name $ show (directGraph studiesgraph) <> "passed!" 
 
 reverseOR :: IO Test
 reverseOR = do

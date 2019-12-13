@@ -41,8 +41,8 @@ packages:
 extra-deps:
 - git: https://github.com/tosku/tesths
   commit: 0fb1ba49641e87b843556cd1441240ef602fcf2b
-#- git: https://github.com/tosku/graph                                                                                        
-  #commit: e379233a1e81225648aab8308937b7a25397a3aa    
+- git: https://github.com/tosku/graph                                                                                        
+  commit: 81211624daf3a16fd827c25bcfcbe9fb939eb608
 - Unique-0.4.7.5
 - natural-numbers-0.1.2.0                                                                                                    
 - either-unwrap-1.1  

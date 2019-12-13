@@ -1,5 +1,5 @@
 {-|
-Module      : Meta.Effects
+Module      : Data.Meta.Effects
 Description : Effect size calculations 
 Copyright   : (c) Thodoris Papakonstantinou, 2018
 License     : GPL-3
@@ -19,23 +19,22 @@ following Borenstein et al's Introduction to Meta-Analysis
 module Data.Meta.Effects
   ( StringIntId (..)
   , TreatmentId (..)
-  , StudyId (..)
-  , Study (..)
-  , IVStudy (..)
-  , PairwiseStudy (..)
   , PointEstimate (..)
   , Variance (..)
-  -- * Effect class
   , Estimate (..)
+  -- * Effect class
   , Effect (..)
+  -- * Gaussian estimate class
+  , Gaussian (..)
+  -- * Comparison with effect
   , Contrast (..)
+  -- * Stores summary contrasts
   , Contrasts (..)
   , Arm (..)
   -- * Just a pair of arms
   , Comparison (..)
   , ComparisonId (..)
-  -- * Gaussian estimate class
-  , Gaussian (..)
+  , NMAEffects (..)
   -- ** Continuous
   , MD (..)
   , SMD (..)
@@ -46,9 +45,6 @@ module Data.Meta.Effects
   , RR (..)
   , RD (..)
   , ConfidenceInterval (..)
-  , tidOfArm
-  , getStudyId
-  , getStudyArms
   , normalCI
   , ciToVariance
   , invcumul975
@@ -63,13 +59,11 @@ module Data.Meta.Effects
   , orToLogOR
   , logRRToRR
   , rrToLogRR
-  , pairwiseStudyToComparison
-  , pairwiseToStudy
-  , armsToComparisons
+  , tidOfArm
   , comparisonToContrast
+  , armsToComparisons
   , contrastsToList
-  , studyToIVStudy
-  , getEffectsOfIVStudy
+  , contrastsFromList
   ) where
 
 import           Control.Applicative
@@ -78,18 +72,63 @@ import           Data.Aeson
 import           Data.Aeson.Types
 import qualified Data.Map.Strict     as Map
 import           Data.Maybe
+import Data.List
 import           GHC.Generics
 import           Data.List.Split
+import Data.Either
+import Data.Numerics
 import qualified Data.Text           as T
 import qualified Data.Text.Read      as TR
-import qualified Data.Csv             as C
-import Data.Either
-import Data.Text.Lazy (Text)
-import Data.Text.Lazy.IO as I
-import Data.Aeson.Text (encodeToLazyText) 
-import Data.Numerics
---import Data.Graph.AdjacencyList
---import Data.Graph.AdjacencyList.Network
+import qualified Data.Csv            as C
+
+type PointEstimate = Double
+
+type Variance = Double
+
+type StandardError = Double
+
+data ConfidenceInterval = CI { lower :: Double
+                             , upper :: Double
+                             }
+  deriving (Generic,Read,Ord,Eq,Show)
+
+class Estimate e => Effect e where
+  isBinary :: e -> Bool -- ^ true if binary outcome false otherwise
+  null :: e -> Double
+  reverseEffect :: e -> e
+
+-- | Class for propabilistic values with point estimates and uncertainty
+class Estimate e where
+  point :: e -> PointEstimate -- ^ the point estimate
+  ci :: e -> ConfidenceInterval -- ^ lower upper values of 95% confidence interval
+  mapEstimate :: (Double -> Double) -> e -> e
+
+-- | Class for Gaussian estimates
+class Gaussian e where
+  expectation :: e -> PointEstimate
+  variance :: e -> Variance
+  translate :: e -> Double -> e
+  changeVariance :: e -> Variance -> e
+
+invcumul975 = 1.959964
+
+-- | get the confidence interval of an effect given its variance
+normalCI :: Gaussian g => g -> ConfidenceInterval
+normalCI d =
+  let μ = expectation d  
+      v = variance d
+      se = sqrt v
+   in CI (μ - invcumul975 * se) (μ + invcumul975 * se)
+
+ciToVariance :: ConfidenceInterval -> Variance
+ciToVariance (CI l u) =
+  let sd = (u - l) / (2 * invcumul975)
+   in sd^2
+
+type Events = Int
+type SampleSize = Int
+type MeanEffect = Double
+type SDEffect = Double
 
 data StringIntId = IntId Int
                  | StringId String
@@ -114,46 +153,26 @@ instance FromJSON TreatmentId
                     $ \tid -> return (TreatmentId $ StringId (T.unpack tid))
        in (\v -> outint v <|> outstr v)
 
-newtype StudyId = StudyId StringIntId 
-  deriving (Generic, Show, Read,Ord,Eq)
-instance ToJSON StudyId
-instance FromJSON StudyId
-  where
-    parseJSON = do
-      let outint = withScientific "StudyId"
-                    $ \tid -> return (StudyId $ IntId (floor tid))
-          outstr = withText "StudyId"
-                    $ \tid -> return (StudyId $ StringId (T.unpack tid))
-       in (\v -> outint v <|> outstr v)
+-- | Arm definition for binary and continuous data
+data Arm = BinaryArm TreatmentId Events SampleSize  
+         | ContinuousArm TreatmentId MeanEffect SDEffect SampleSize
+  deriving (Show, Generic, Read, Ord)
+instance Eq Arm
+    where arm1 == arm2 = tidOfArm arm1 == tidOfArm arm2
+instance ToJSON Arm
+instance FromJSON Arm
 
--- | Easy Study definition for csv reading pairwise studies
-data PairwiseStudy = 
-      -- |Constructor for continuous outcomes 
-      --  ID, mean, standard deviation, sample size of comparison
-      CSVContinuousStudy { study :: !String 
-                         , meanA :: !Double
-                         , sdA :: !Double 
-                         , nA :: !Int
-                         , meanB :: !Double
-                         , sdB :: !Double 
-                         , nB :: !Int
-                         }
-      -- |Constructor for binary outcomes 
-      --  ID, events and number of participants
-      | CSVBinaryStudy { study :: !String 
-                       , eventsA :: !Int
-                       , nA :: !Int
-                       , eventsB :: !Int
-                       , nB :: !Int
-                       }
-  deriving (Generic,Read,Ord,Eq,Show)
-instance C.FromRecord PairwiseStudy
-instance C.FromNamedRecord PairwiseStudy
-instance C.ToNamedRecord PairwiseStudy
+-- | Definition of effect of a Treatment A vs Treatment B
+data Effect a => Contrast a = Contrast TreatmentId TreatmentId a
+  deriving (Show, Read, Ord, Eq)
 
+-- | Contrasts as map of map of treatments to effects (kind of like an array)
+data Effect a => Contrasts a = Contrasts (Map.Map ComparisonId a)
+  deriving (Show, Read, Ord, Eq)
+type Comparison = (Arm, Arm)
 
 data ComparisonId = ComparisonId TreatmentId TreatmentId
-  deriving (Generic,Eq,Ord)
+  deriving (Generic, Read, Eq, Ord)
 instance Show ComparisonId where
   show (ComparisonId a b) =
      show a ++ ":" ++ show b
@@ -180,94 +199,33 @@ this (ComparisonId a b) = a
 that :: ComparisonId -> TreatmentId
 that (ComparisonId a b) = b
 
-type Comparison = (Arm, Arm)
+tidOfArm :: Arm -> TreatmentId
+tidOfArm (ContinuousArm tidA _ _ _) = tidA
+tidOfArm (BinaryArm tidA _ _) = tidA
 
-type Events = Int
-type SampleSize = Int
-type MeanEffect = Double
-type SDEffect = Double
+armsToComparisons :: [Arm] -> [Comparison]
+armsToComparisons arms = 
+  let allcomps = (,) <$> arms <*> arms
+   in filter (\(a,b) -> a/=b && a < b) allcomps
 
--- | Arm definition for binary and continuous data
-data Arm = BinaryArm TreatmentId Events SampleSize  
-         | ContinuousArm TreatmentId MeanEffect SDEffect SampleSize
-  deriving (Show, Generic, Read, Ord)
-instance Eq Arm
-    where arm1 == arm2 = tidOfArm arm1 == tidOfArm arm2
-instance ToJSON Arm
-instance FromJSON Arm
+contrastsToList :: Effect e => Contrasts e -> [Contrast e]
+contrastsToList (Contrasts e) = 
+  let cts = Map.toList e
+   in map (\(ComparisonId ta tb, e) -> Contrast ta tb e) cts
 
--- | Definition of effect of a Treatment A vs Treatment B
-data Effect a => Contrast a = Contrast TreatmentId TreatmentId a
-  deriving (Show, Read, Ord, Eq)
+contrastsFromList :: Effect e => [(Contrast e)] -> Contrasts e
+contrastsFromList contrastlist = 
+  let cts = Map.fromList $ 
+            map (\(Contrast ta tb e) -> ((ComparisonId ta tb), e))
+              contrastlist
+   in Contrasts cts
 
 reverseContrast :: Effect a => Contrast a -> Contrast a
 reverseContrast (Contrast ta tb e) = 
   Contrast tb ta (reverseEffect e)
 
--- | Contrasts as map of map of treatments to effects (kind of like an array)
-data Effect a => Contrasts a = Contrasts (Map.Map TreatmentId (Map.Map TreatmentId a))
-  deriving (Show, Read, Ord, Eq)
-
--- | Study as a collection of treatments (arms). This definitions coveres
--- multiarm studies
-data Study = BinaryStudy StudyId [Arm] 
-           | ContinuousStudy StudyId [Arm]
-  deriving (Show, Read, Ord, Eq, Generic)
-instance ToJSON Study
-instance FromJSON Study
-
-getStudyId :: Study -> StudyId
-getStudyId (BinaryStudy sid _) = sid
-getStudyId (ContinuousStudy sid _) = sid
-
-getStudyArms :: Study -> [Arm]
-getStudyArms (BinaryStudy sid arms) = arms
-getStudyArms (ContinuousStudy sid arms) = arms
-
--- | Study as inverse variance estimates
-data Effect a => IVStudy a = IVStudy StudyId (Contrasts a)
-  deriving (Show, Read, Ord, Eq)
-
-type PointEstimate = Double
-type Variance = Double
-type StandardError = Double
-data ConfidenceInterval = CI { lower :: Double
-                             , upper :: Double
-                             }
-  deriving (Generic,Read,Ord,Eq,Show)
-
-invcumul975 = 1.959964
-
--- | get the confidence interval of an effect given its variance
-normalCI :: Gaussian g => g -> ConfidenceInterval
-normalCI d =
-  let μ = expectation d  
-      v = variance d
-      se = sqrt v
-   in CI (μ - invcumul975 * se) (μ + invcumul975 * se)
-
-ciToVariance :: ConfidenceInterval -> Variance
-ciToVariance (CI l u) =
-  let sd = (u - l) / (2 * invcumul975)
-   in sd^2
-
--- | Class for propabilistic values with point estimates and uncertainty
-class Estimate e where
-  point :: e -> Double -- ^ the point estimate
-  ci :: e -> ConfidenceInterval -- ^ lower upper values of 95% confidence interval
-  mapEstimate :: (Double -> Double) -> e -> e
-
-class Estimate e => Effect e where
-  isBinary :: e -> Bool -- ^ true if binary outcome false otherwise
-  null :: e -> Double
-  reverseEffect :: e -> e
-
-class Gaussian e where
-  expectation :: e -> Double
-  variance :: e -> Double
-  translate :: e -> Double -> e
-
-data MD = MD Double Double -- ^ Mean difference
+-- | Mean difference
+data MD = MD Double Double
   deriving (Read,Ord,Eq,Show, Generic)
 instance Estimate MD where
   point (MD p v) = p
@@ -281,8 +239,10 @@ instance Gaussian MD where
   expectation (MD p v) = p
   variance (MD p v) = v
   translate (MD p v) x = MD (p+x) v
+  changeVariance (MD p v) v' = MD p v'
 
-data SMD = SMD PointEstimate Variance -- ^ Standardized Mean Difference
+-- | Standardized Mean Difference
+data SMD = SMD PointEstimate Variance
   deriving (Generic,Read,Ord,Eq,Show)
 instance Estimate SMD where
   point (SMD p v) = p
@@ -296,8 +256,10 @@ instance Gaussian SMD where
   expectation (SMD p v) = p
   variance (SMD p v) = v
   translate (SMD p v) x = SMD (p+x) v
+  changeVariance (SMD p v) v' = SMD p v'
 
-data LogOR = LogOR PointEstimate Variance -- ^ Log Odds Ratio
+-- | Log Odds Ratio
+data LogOR = LogOR PointEstimate Variance
   deriving (Generic,Read,Ord,Eq,Show)
 instance Estimate LogOR where
   point (LogOR p v) = p
@@ -311,8 +273,10 @@ instance Gaussian LogOR where
   expectation (LogOR p v) = p
   variance (LogOR p v) = v
   translate (LogOR p v) x = LogOR (p+x) v
+  changeVariance (LogOR p v) v' = LogOR p v'
 
-data LogRR = LogRR PointEstimate Variance -- ^ Log Risk Ratio
+-- | Log Risk Ratio
+data LogRR = LogRR PointEstimate Variance
   deriving (Generic,Read,Ord,Eq,Show)
 instance Estimate LogRR where
   point (LogRR p v) = p
@@ -326,8 +290,10 @@ instance Gaussian LogRR where
   expectation (LogRR p v) = p
   variance (LogRR p v) = v
   translate (LogRR p v) x = LogRR (p+x) v
+  changeVariance (LogRR p v) v' = LogRR p v'
 
-data OR = OR PointEstimate ConfidenceInterval -- ^ Odds Ratio
+-- | Odds Ratio
+data OR = OR PointEstimate ConfidenceInterval
   deriving (Generic,Read,Ord,Eq,Show)
 instance Estimate OR where
   point (OR p ci) = p
@@ -346,8 +312,8 @@ instance Effect OR where
      in OR p' (CI nl' nu')
 
 
-
-data RR = RR PointEstimate ConfidenceInterval -- ^ Risk Ratio
+-- | Risk Ratio
+data RR = RR PointEstimate ConfidenceInterval
   deriving (Generic,Read,Ord,Eq,Show)
 instance Estimate RR where
   point (RR p ci) = p
@@ -365,7 +331,8 @@ instance Effect RR where
         nu' = 1 / nl
      in RR p' (CI nl' nu')
 
-data RD = RD PointEstimate Variance -- ^ Risk Difference
+-- | Risk Difference
+data RD = RD PointEstimate Variance
   deriving (Generic,Read,Ord,Eq,Show)
 instance Estimate RD where
   point (RD p v) = p
@@ -379,34 +346,11 @@ instance Gaussian RD where
   expectation (RD p v) = p
   variance (RD p v) = v
   translate (RD p v) x = RD (p+x) v
+  changeVariance (RD p v) v' = RD p v'
 
 -- | checks if CI is messed up
 checkCI :: ConfidenceInterval -> Bool
 checkCI (CI l u) = l < u
-
-pairwiseStudyToComparison :: PairwiseStudy -> Comparison
-pairwiseStudyToComparison (CSVBinaryStudy sid ea na eb nb)
-  = ( BinaryArm (TreatmentId $ StringId "A") ea na
-    , BinaryArm (TreatmentId $ StringId "B") eb nb
-    )
-pairwiseStudyToComparison s
-  = ( ContinuousArm (TreatmentId $ StringId "A") (meanA s) (sdA s) (nA s)
-    , ContinuousArm (TreatmentId $ StringId "B") (meanB s) (sdB s) (nB s)
-    )
-
-pairwiseToStudy :: PairwiseStudy -> Study
-pairwiseToStudy (CSVContinuousStudy sid ma sa na mb sb nb) = 
-  let pwst = (CSVContinuousStudy sid ma sa na mb sb nb) 
-      comparison = pairwiseStudyToComparison pwst
-   in ContinuousStudy (StudyId $ StringId sid) [fst comparison, snd comparison]
-pairwiseToStudy (CSVBinaryStudy sid ea na eb nb) = 
-  let pwst = (CSVBinaryStudy sid ea na eb nb)
-      comparison = pairwiseStudyToComparison pwst
-   in BinaryStudy (StudyId $ StringId sid) [fst comparison, snd comparison]
-
-tidOfArm :: Arm -> TreatmentId
-tidOfArm (ContinuousArm tidA _ _ _) = tidA
-tidOfArm (BinaryArm tidA _ _) = tidA
 
 comparisonToContrast :: Effect a => (Comparison -> Either String a) 
                -> Comparison 
@@ -418,39 +362,9 @@ comparisonToContrast getEffect comparison =
         Left err -> Left err
         Right effect -> Right $ Contrast tidA tidB effect
 
-armsToComparisons :: [Arm] -> [Comparison]
-armsToComparisons arms = 
-  let allcomps = (,) <$> arms <*> arms
-   in filter (\(a,b) -> a/=b && a < b) allcomps
-
-studyToIVStudy :: Effect a => Study 
-                -> (Comparison -> Either String a) 
-                -> Either String (IVStudy a)
-studyToIVStudy st getEffect =
-  let sid = getStudyId st
-      arms = getStudyArms st
-      eef = sequence $ map (comparisonToContrast getEffect) $ armsToComparisons arms
-   in case eef of
-        Left err -> Left err
-        Right contrasts -> 
-          let cntrs = foldl (\acc (Contrast ta tb ef) -> 
-                let acc' = Map.insert ta (Map.singleton tb ef) acc
-                 in Map.insert tb (Map.singleton ta (reverseEffect ef)) acc') Map.empty contrasts
-           in Right $ IVStudy sid (Contrasts cntrs)
-
-contrastsToList :: Effect e => Contrasts e -> [Contrast e]
-contrastsToList (Contrasts e) = 
-  let cts = Map.toList e
-   in map (\(ta, tbef) ->
-                    let (tb, ef) = head $ Map.toList tbef
-                     in Contrast ta tb ef
-          ) cts
-
-getEffectsOfIVStudy :: Effect a => IVStudy a -> [a]
-getEffectsOfIVStudy (IVStudy st contrs) =
-  let cts = contrastsToList contrs
-   in map (\(Contrast ta tb ef) -> ef) cts
-
+-- | Stores summary contrasts
+data Effect a => NMAEffects a = NMAEffects (Map.Map ComparisonId a)
+  deriving (Read, Ord, Eq, Show)
 
 meanDifference :: Comparison -> Either String MD
 -- |Not assuming σ1 = σ2 (4.5)

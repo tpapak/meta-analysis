@@ -13,6 +13,7 @@ import           TestHS
 
 import Data.Numerics
 import           Data.Meta.Effects
+import           Data.Meta.Studies
 import           Data.Meta.Pairwise.RandomEffects
 
 {-fastTests :: [Test]-}
@@ -25,7 +26,7 @@ ioTests = [ smd
           , rr
           , testor
           , testrd
-          , testtau
+          --, testtau
           ]
 
 smd :: IO Test

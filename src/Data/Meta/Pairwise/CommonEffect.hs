@@ -29,6 +29,7 @@ import Data.List
 
 import Data.Numerics
 import Data.Meta.Effects
+import Data.Meta.Studies
 
 -- | Common Effect
 class Effect a => CommonEffect a where

@@ -23,7 +23,8 @@ dependencies:
 - base >= 4.7 && < 5
 - extra
 - text
-#- graph >= 0.4.0.0
+- graph >= 0.4.0.0
+- hmatrix >= 0.20.0.0
 
 
 library:
@@ -38,6 +39,8 @@ library:
   exposed-modules:
    - Data.Numerics
    - Data.Meta.Effects
+   - Data.Meta.Multiarm
+   - Data.Meta.Studies
    - Data.Meta.Pairwise.CommonEffect
    - Data.Meta.Pairwise.RandomEffects
 
