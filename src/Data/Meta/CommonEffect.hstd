@@ -1,26 +1,23 @@
 {-|
-Module      : Meta.Pairwise.CommonEffect
-Description : Common or Fixed effect meta-analysis
-Copyright   : (c) Thodoris Papakonstantinou, 2018
+Module      : Meta.CommonEffect
+Description : Common or Fixed effect network meta-analysis
+Copyright   : (c) Thodoris Papakonstantinou, 2019
 License     : GPL-3
 Maintainer  : mail@tpapak.com
 Stability   : experimental
 Portability : POSIX
 
-Chapter 11 Borenstein's Introduction to Meta-Analysis
-Common Effect analysis asumes all studies share a single true effect.
+perform common effect network meta-analysis
 -}
 
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Data.Meta.Pairwise.CommonEffect
+module Data.Meta.CommonEffect
   ( CommonEffect (..)
   ) where
 
 import           Control.Applicative
 import qualified Data.Map.Strict     as Map
-import qualified Data.Set as Set
-import qualified Data.IntMap.Strict as IM
 import           Data.Maybe
 import           GHC.Generics
 import Data.Either
@@ -28,11 +25,54 @@ import Data.List
 
 import Data.Numerics
 import Data.Meta.Effects
-import Data.Meta.Studies
+
+
+-- | graph representation of contrasts covering multiple arms. reverse
+-- comparisons are correctly represented
+data Effect a => ContrastGraph a 
+  = Contrasts { graph :: Graph
+              , vsts :: IM.IntMap TreatmentId
+              , tsvs :: Map.Map TreatmentId Vertex
+              , effects :: Map.Map Edge a
+              }
+          deriving (Show, Eq)
+
+-- | Turn list of contrasts in a study into a contrast gVaph (network)
+-- for pairwise 
+studyContrasts' :: Effect a => [Contrast a] -> ContrastGraph a
+studyContrasts' contrasts =
+  let treatments = foldl' (\ac (Contrast a b e) 
+        -> Set.insert a (Set.insert b ac)) Set.empty contrasts
+      vsts = IM.fromList $ zip [1..] (Set.toList treatments)
+      tsvs = Map.fromList $ zip (Set.toList treatments) [1..] 
+      getVertex tid = fromJust (Map.lookup tid tsvs)
+      flows = Map.fromList $ 
+        map (\((ComparisonId a b), h) -> 
+          let e = if h > 0 
+                     then fromTuple (getVertex a, getVertex b)
+                     else fromTuple (getVertex b, getVertex a)
+          in (e, toRational (abs h))) $ Map.toList hmr
+      es = Map.keys flows
+      tgr = graphFromEdges es
+      ntw = Network { graph = tgr
+                    , source = getVertex $ this cid
+                    , sink = getVertex $ that cid
+                    , capacities = flows
+                    , flow = flows
+                    }
+   in Just ( HMGraph { row = cid
+                     , network = ntw
+                     , vsts = vsts
+                     , tsvs = tsvs
+                     , contribution = Map.fromList $ zip directs (repeat 0)
+                     , streams = []
+                     })
+      (Map.Map TreatmentId (Map.Map TreatmentId a))
+  deriving (Show, Read, Ord, Eq)
 
 -- | Common Effect
 class Effect a => CommonEffect a where
-  commonEffect :: [a] -> a
+  commonEffects :: [Contrast a] -> ConrtastGraph a
 
 instance CommonEffect MD where
   commonEffect effects =

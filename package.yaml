@@ -41,6 +41,7 @@ library:
    - Data.Meta.Effects
    - Data.Meta.Multiarm
    - Data.Meta.Studies
+   - Data.Meta.NMA
    - Data.Meta.Pairwise.CommonEffect
    - Data.Meta.Pairwise.RandomEffects
 

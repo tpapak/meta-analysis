@@ -89,6 +89,6 @@ fourArm = do
                         ) reweighted
          in if netmetaWeighted == reweighted
                then
-                 return $ testPassed name $ show seTEs <> "passed!"
+                 return $ testPassed name "passed!"
                else
                  return $ testFailed name $ (show netmetaWeighted, show reweighted)

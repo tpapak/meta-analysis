@@ -79,7 +79,6 @@ import Data.Either
 import Data.Numerics
 import qualified Data.Text           as T
 import qualified Data.Text.Read      as TR
-import qualified Data.Csv            as C
 
 type PointEstimate = Double
 
@@ -137,9 +136,6 @@ instance ToJSON StringIntId
 instance Show StringIntId where
   show (IntId tid)    = show tid
   show (StringId tid) = tid
-instance C.FromRecord StringIntId
-instance C.FromNamedRecord StringIntId
-instance C.ToNamedRecord StringIntId
 
 newtype TreatmentId = TreatmentId StringIntId 
   deriving (Generic, Show, Read, Ord, Eq)
@@ -152,7 +148,7 @@ instance FromJSON TreatmentId
           outstr = withText "TreatmentId"
                     $ \tid -> return (TreatmentId $ StringId (T.unpack tid))
        in (\v -> outint v <|> outstr v)
-
+--
 -- | Arm definition for binary and continuous data
 data Arm = BinaryArm TreatmentId Events SampleSize  
          | ContinuousArm TreatmentId MeanEffect SDEffect SampleSize
@@ -211,7 +207,9 @@ armsToComparisons arms =
 contrastsToList :: Effect e => Contrasts e -> [Contrast e]
 contrastsToList (Contrasts e) = 
   let cts = Map.toList e
-   in map (\(ComparisonId ta tb, e) -> Contrast ta tb e) cts
+      allcomps = map (\(ComparisonId ta tb, e) -> Contrast ta tb e) cts
+   --in filter (\(Contrast ta tb e) -> ta < tb) allcomps
+   in allcomps
 
 contrastsFromList :: Effect e => [(Contrast e)] -> Contrasts e
 contrastsFromList contrastlist = 

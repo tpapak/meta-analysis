@@ -35,7 +35,7 @@ smd = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector PairwiseStudy)
+               :: Either String (C.Header, V.Vector CSVStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
@@ -56,7 +56,7 @@ rr = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector PairwiseStudy)
+               :: Either String (C.Header, V.Vector CSVStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
@@ -76,7 +76,7 @@ testor = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector PairwiseStudy)
+               :: Either String (C.Header, V.Vector CSVStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
@@ -96,7 +96,7 @@ testrd = do
   let studiesFile = "test/binary.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector PairwiseStudy)
+               :: Either String (C.Header, V.Vector CSVStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
@@ -116,7 +116,7 @@ testtau = do
   let studiesFile = "test/continuous.csv"
   csvData <- B.readFile studiesFile
   let estudies = C.decodeByName csvData
-               :: Either String (C.Header, V.Vector PairwiseStudy)
+               :: Either String (C.Header, V.Vector CSVStudy)
   case estudies of
     Left err -> return $ testFailed name $ ("error parsing csv",err)
     Right (_, studies) -> do
