@@ -23,7 +23,7 @@ import           Data.Meta.Studies
 ioTests :: [IO Test]
 ioTests = [ ivstudies
           , testSMD
-  --, testLogOR
+  , testLogOR
   --, testRR
   , testOR
   --, testRD
@@ -42,7 +42,7 @@ ivstudies = do
     Right studies -> do
       let Right mdstudies =
             sequence $ map (flip studyToIVStudy meanDifference) studies
-          estudiesgraph = studiesGraph' mdstudies head
+          estudiesgraph = studiesGraph' mdstudies
        in case estudiesgraph of
             Left err ->
               return
@@ -125,32 +125,44 @@ testOR = do
              $ testFailed name
              $ (show correctORs, show effects)
 
---testLogOR :: IO Test
---testLogOR = do
-  --let name        = "log Odds Ratio"
-  --let studiesFile = "test/binary.json"
-  --estudies <- readStudies studiesFile
-  --case estudies of
-    --Left err -> return $ testFailed name $ ("Error merging arms to studies", err)
-    --Right studies -> do
-      --let lnORs = rights $ V.toList $ V.map
-            --(logOddsRatio . csvStudyToComparison)
-            --studies
-          --estimates    = map ((\s -> (roundDouble s 4)) . expectation) lnORs
-          --variances    = map ((\s -> (roundDouble s 4)) . variance) lnORs
-          --correctlnORs = [-0.3662, -0.2877, -0.3842, -1.3218, -0.4169, -0.1595]
-          --correctvars  = [0.1851, 0.2896, 0.1556, 0.0583, 0.2816, 0.1597]
-      --if estimates == correctlnORs
-        --then if variances == correctvars
-          --then return $ testPassed name $ "passed!"
-          --else
-            --return
-            -- $ testFailed name
-            -- $ ("wrong lnRRs variances", show variances <> show correctvars)
-        --else
-          --return
-          -- $ testFailed name
-          -- $ ("wrong lnRRs", show estimates <> show correctlnORs)
+testLogOR :: IO Test
+testLogOR = do
+  let name        = "log Odds Ratio"
+  let studiesFile = "test/binary.json"
+  estudies <- readStudies studiesFile
+  case estudies of
+    Left err -> return $ testFailed name $ ("Error merging arms to studies", err)
+    Right studies -> do
+      let Right lors = sequence $ map (flip studyToIVStudy logOddsRatio) studies
+          estimates  = 
+            map (\(IVStudy s (Contrasts cts)) -> 
+                  let Just e 
+                        = Map.lookup 
+                          (ComparisonId 
+                            (TreatmentId (StringId "A")) 
+                            (TreatmentId (StringId "B"))) cts
+                   in ((roundDouble (point e) 7)
+                      ,(roundDouble (sqrt $ variance e) 7)
+                      )
+                ) lors
+          effects = map fst estimates
+          variances = map snd estimates
+          correctlnORs = [-0.1594557,-0.2876821,-1.3217558,-0.3841625,-0.3661537,-0.4168938]
+          correctvars  = [0.3996753,0.5381295,0.2414367,0.3944681,0.4302434,0.5306994]
+      if effects == correctlnORs
+        then if correctvars == variances
+          then return $ testPassed name $ "passed!"
+          else
+            return
+              $ testFailed name
+              $ ( "wrong LogORs Variances"
+              , show variances
+                <> show correctvars
+              )
+          else
+            return
+             $ testFailed name
+             $ (show correctlnORs, show estimates)
 
 --testRR :: IO Test
 --testRR = do

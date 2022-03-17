@@ -18,7 +18,8 @@ module Data.Meta.Studies
   , Study (..)
   , IVStudy (..)
   , CSVStudy (..)
-  , StudyGraph (..)
+  , StudyGraph (..) -- |for one stage nma
+  , StudyGraph' (..) -- |for two stage nma
   , getStudyId
   , getStudyArms
   , csvStudyToComparison
@@ -138,13 +139,30 @@ instance FromJSON CSVStudy
                         <*> v .: "n"
        in (\(Object v) -> contwide v <|> contlong v <|> binwide v <|> binlong v)
 
+-- | Data structure for representing studies for a two stage approach
+data Effect a => StudyGraph' a = 
+  StudyGraph' { directGraph' :: Graph
+              , vsts' :: IM.IntMap TreatmentId
+              , tsvs' :: Map.Map TreatmentId Vertex
+              --, studies' :: Map.Map ComparisonId [(StudyId, a)]
+              --, studies :: [(StudyId, Contrast a)]
+              --, studies :: [IVStudy a]
+              , studies' :: [[Either String (StudyId, Contrast a)]]
+              , directEffects' :: Map.Map ComparisonId a -- ^ summary of studies for two stage nma
+              }
+  deriving (Show, Eq)
+
 -- | Data structure for representing whole network of studies
 data Effect a => StudyGraph a = 
-  StudyGraph { directGraph :: Graph
+  StudyGraph { studyGraph :: Graph
+             , directGraph :: Graph
              , vsts :: IM.IntMap TreatmentId
              , tsvs :: Map.Map TreatmentId Vertex
-             , studies :: Map.Map ComparisonId [(StudyId, a)]
-             , directEffects :: Map.Map ComparisonId a -- ^ summary of studies for two stage nma
+             --, studies :: Map.Map ComparisonId [(StudyId, a)]
+             --, studies :: [(StudyId, Contrast a)]
+             --, studies :: [IVStudy a]
+             --, studies :: [[Either String (StudyId, Contrast a)]]
+             --, directEffects :: Map.Map TreatmentId (Map.Map TreatmentId a) -- ^ summary of studies for two stage nma
              }
   deriving (Show, Eq)
 
@@ -227,7 +245,8 @@ studyToIVStudy :: Effect a => Study
 studyToIVStudy st getEffect =
   let sid = getStudyId st
       arms = getStudyArms st
-      eef = sequence $ map (comparisonToContrast getEffect) $ armsToComparisons arms
+      eef = sequence $ map (comparisonToContrast getEffect) $ armsToComparisons arms 
+      -- armsToComparisons sorts arms
    in case eef of
         Left err -> Left err
         Right contrasts -> 
@@ -237,19 +256,19 @@ studyToIVStudy st getEffect =
            in Right $ IVStudy sid (Contrasts cntrs)
 
 -- | Convert list of studies into their network
-studiesGraph' :: (Effect e, Gaussian e) => [IVStudy e] 
-              -> ([e] -> e)
-              -> Either String (StudyGraph e)
-studiesGraph' studyList summarizePairwise =
-  let econtrasts = sequence $ concat 
-                 $ map (\(IVStudy sid cnts) -> 
-                   let rawcls = contrastsToList cnts
-                       ecls = reweightMultiArm rawcls
-                    in case ecls of
-                         Left err -> [Left (show sid <> err)]
-                         Right cls ->
-                             map (\contrast -> Right (sid, contrast) ) cls) 
-                             studyList
+studiesGraph' :: (Effect e, Gaussian e, InverseVariance e) => [IVStudy e] 
+              -> Either String (StudyGraph' e)
+studiesGraph' studyList =
+  let econtrasts' = map (\(IVStudy sid cnts) -> 
+                     let rawcls = contrastsToList cnts
+                         ecls = reweightMultiArm rawcls
+                      in case ecls of
+                           Left err -> [Left (show sid <> err)]
+                           Right cls ->
+                               --map (\contrast -> Right (sid, contrast) ) cls) 
+                               map (\contrast -> Right (sid, contrast) ) rawcls) 
+                               studyList
+      econtrasts = sequence $ concat econtrasts'
    in case econtrasts of
         Left err -> Left err
         Right contrasts -> 
@@ -269,12 +288,15 @@ studiesGraph' studyList summarizePairwise =
                           vb = fromJust $ Map.lookup b tsvs
                       in Edge va vb) comparisons
               gr = graphFromEdges es
-              directEffects = Map.map (\sts -> summarizePairwise (map (\(sid, e) -> e) sts)) studiesEffects
-           in Right $ StudyGraph { directGraph = gr
-                                 , vsts = vsts
-                                 , tsvs = tsvs
-                                 , studies = studiesEffects
-                                 , directEffects = directEffects
+
+              directEffects = 
+                --map (\(Edge va vb) -> ) es
+                Map.map (\sts -> inverseVariance (map (\(sid, e) -> e) sts)) studiesEffects
+           in Right $ StudyGraph' { directGraph' = gr
+                                 , vsts' = vsts
+                                 , tsvs' = tsvs
+                                 , studies' = econtrasts'
+                                 , directEffects' = directEffects
                                  }
 
 -- | Read JSON file with studies.

@@ -1,10 +1,10 @@
 name:                meta-analysis
-version:             0.1.7.0
+version:             0.2.0.0
 github:              "tpapak/meta-analysis"
 license:             GPL-3
 author:              "Thodoris Papakonstantinou"
-maintainer:          "hi@tpapak.com"
-copyright:           "2019 Thodoris Papakonstantinou"
+maintainer:          "dev@tpapak.com"
+copyright:           "2021 Thodoris Papakonstantinou"
 
 extra-source-files:
 - README.md
@@ -23,7 +23,7 @@ dependencies:
 - base >= 4.7 && < 5
 - extra
 - text
-- graph >= 0.4.0.0
+- graph >= 0.4.1.1
 - hmatrix >= 0.20.0.0
 
 
@@ -43,7 +43,6 @@ library:
    - Data.Meta.Studies
    - Data.Meta.NMA
    - Data.Meta.Pairwise.CommonEffect
-   - Data.Meta.Pairwise.RandomEffects
 
 executables:
   meta-analysis-exe:
@@ -53,8 +52,6 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    dependencies:
-    - meta-analysis
 
 tests:
   meta-analysis-test:

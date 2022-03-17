@@ -15,6 +15,7 @@ import           Data.Numerics
 import           Data.Meta.Effects
 import           Data.Meta.Studies
 import           Data.Meta.Pairwise.CommonEffect
+import           Data.Meta.NMA
 
 {-fastTests :: [Test]-}
 {-fastTests = [ -}
@@ -22,11 +23,64 @@ import           Data.Meta.Pairwise.CommonEffect
             {-]-}
 
 ioTests :: [IO Test]
-ioTests = [md
+ioTests = [ md
+          , testLogOR
+          , consistentPairwise
+          , springsmd
   --, smd
-  --, rr
+    --, rr
   --, testrd
           ]
+
+consistentPairwise :: IO Test
+consistentPairwise = do
+  let name = "Consistent pairwise SPRINGS"
+  let studiesFile = "test/conspair.json"
+  estudies <- readStudies studiesFile
+  case estudies of
+    Left err -> return $ testFailed name $ ("Error merging arms to studies", err)
+    Right studies -> do
+      let enetes = springNMA studies (Just 4) Nothing meanArm
+       in case enetes of
+            Left err -> return $ testFailed name $ ("no nets \n", show studies <> "\n" <> show enetes)
+            Right netes -> do
+              let outcome = ((networkEstimates netes) Map.!
+                              (TreatmentId (StringId "A")) Map.!
+                                    (TreatmentId (StringId "B"))) 
+              let founde  = outcome
+                  expected = 4
+               in if expected == founde
+                    then return $ testPassed name $ show founde <> "passed!"
+                    else do putStr $ debugmsg netes 
+                            return $ testFailed name $ (show expected
+                              --, show founde )
+                                   , show founde <> show netes)
+
+springsmd :: IO Test
+springsmd = do
+  let name = "Common Effect pairwise meta-analysis Mean difference with SPRINGS"
+  let studiesFile = "test/continuous.json"
+  estudies <- readStudies studiesFile
+  case estudies of
+    Left err -> return $ testFailed name $ ("Error merging arms to studies", err)
+    Right studies -> do
+      let enetes = springNMA studies (Just 7) Nothing meanArm
+       in case enetes of
+            Left err -> return $ testFailed name $ ("no nets \n", show studies <> "\n" <> show enetes)
+            Right netes -> do
+              let eff = ((networkEstimates netes) Map.!
+                             (TreatmentId (StringId "B")) Map.!
+                             (TreatmentId (StringId "A"))) 
+                  var = ((networkVariances netes) Map.!
+                             (TreatmentId (StringId "A")) Map.!
+                             (TreatmentId (StringId "B"))) 
+                  founde  = (roundDouble eff 4, roundDouble var 4)
+                  expected = (8.7666, (roundDouble (1.2739 ^ 2) 4))
+               in if expected == founde
+                    then return $ testPassed name $ show founde <> "passed!"
+                    else do 
+                      putStr $ debugmsg netes
+                      return $ testFailed name $ (show expected, show founde)
 
 md :: IO Test
 md = do
@@ -38,13 +92,32 @@ md = do
     Right studies -> do
       let Right mdstudies =
             sequence $ map (flip studyToIVStudy meanDifference) studies
-          estudiesgraph = studiesGraph' mdstudies head
-          Right studiesgraph = studiesGraph' mdstudies head
-          directs  = directEffects studiesgraph
+          Right studiesgraph = studiesGraph' mdstudies
+          directs = directEffects' studiesgraph
           (MD e v) = head $ Map.elems directs
           foundce  = mapEstimate (flip roundDouble 4) (MD e v)
           expected = MD 8.7666 (roundDouble (1.2739 ^ 2) 4)
-      return $ testPassed name $ show directs <> "passed!"
+      if foundce == expected
+        then return $ testPassed name $ "nice!!"
+        else return $ testFailed name $ (show expected, show mdstudies <> show studies)
+
+testLogOR :: IO Test
+testLogOR = do
+  let name = "Common Effect pairwise meta-analysis on Odds ratios"
+  let studiesFile = "test/binary.json"
+  estudies <- readStudies studiesFile
+  case estudies of
+    Right studies -> do
+      let Right orstudies =
+            sequence $ map (flip studyToIVStudy logOddsRatio) studies
+          Right studiesgraph = studiesGraph' orstudies
+          directs = directEffects' studiesgraph
+          (LogOR e v) = head $ Map.elems directs
+          foundce  = mapEstimate (flip roundDouble 4) (LogOR e v)
+          expected = LogOR (-0.7241) (roundDouble (0.1538501 ^ 2) 4)
+      if foundce == expected
+        then return $ testPassed name $ "nice!!"
+        else return $ testFailed name $ (show expected, show foundce)
 
 --smd :: IO Test
 --smd = do

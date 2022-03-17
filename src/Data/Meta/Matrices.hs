@@ -12,6 +12,7 @@ Portability : POSIX
 module Data.Meta.Matrices
   ( createBMatrix
   , createAMatrix
+  , createCMatrix
   )
 where
 
@@ -25,6 +26,7 @@ import           Data.Meta.Effects
 import qualified Numeric.LinearAlgebra         as LA
 import qualified Numeric.LinearAlgebra.Devel   as LAD
 import qualified Data.Graph.AdjacencyList      as G
+import qualified Data.Graph.AdjacencyList.BFS      as BFS
 
 -- | create the edge vertex adjacency matrix given a graph
 createBMatrix :: G.Graph -> LA.Matrix Double
@@ -69,3 +71,48 @@ createAMatrix g =
       rows = map rowfromEdge es
       a    = LA.fromRows rows
   in  a
+
+-- | create the Vertex Edge adjacency matrix given a graph
+
+-- | create the Vertex Edge adjacency matrix given a graph
+createCMatrix :: G.Graph -> LA.Matrix Double
+createCMatrix g =
+  let vs  = G.vertices g
+      nvs = length vs
+      es  = G.edges g
+      nes = length es
+      rowfromVertex v =
+        let r = map (\e -> 
+              let (u, v') = G.toTuple e
+                  fillcell x | x==u = (-1.0)
+                  fillcell x | x==v' = (1.0)
+                  fillcell _ = (0.0)
+               in  fillcell v
+                  ) es
+         in LA.fromList $ r :: LA.Vector Double
+      rows = map rowfromVertex vs
+      c    = LA.fromRows rows
+  in  c
+
+-- | create the Vertex Edge adjacency matrix given a graph
+createXMatrix :: G.Graph -> LA.Matrix Double
+createXMatrix g =
+  let vs  = G.vertices g
+      nvs = length vs
+      es  = G.edges g
+      nes = length es
+      firstVertex = head vs
+      bfsNet = BFS.bfs g firstVertex
+      spanningtree = BFS.spanningTree bfsNet
+      rowfromVertex v =
+        let r = map (\e -> 
+              let (u, v') = G.toTuple e
+                  fillcell x | x==u = (-1.0)
+                  fillcell x | x==v' = (1.0)
+                  fillcell _ = (0.0)
+               in  fillcell v
+                  ) es
+         in LA.fromList $ r :: LA.Vector Double
+      rows = map rowfromVertex vs
+      c    = LA.fromRows rows
+  in  c
