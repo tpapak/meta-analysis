@@ -110,31 +110,29 @@ springNMA studies mpinnedVertex mtau2 armEffect =
                         studysprings = sequence $  case armEffect $ head arms of
                           Left err -> [Left err]
                           Right aArm -> 
-                            let pArm = expectation aArm
-                             in foldl' (\acc a -> case armEffect a of
-                                        Left err -> Left err : acc
-                                        Right armef -> 
-                                          let tid = tidOfArm a
-                                              tausid = StudyId $ StringId ((show sid) ++ "_" ++ show tid)
-                                              vs = stsvs Map.! (Left sid)
-                                              vt = stsvs Map.! (Right tid)
-                                              vtau = stsvs Map.! (Left tausid)
-                                              eff = relatedRelative armef
-                                              releff = translate eff (-pArm)
-                                              nl = expectation releff
-                                              k = 1 / (variance releff)
-                                              spr = Spring k nl nl
-                                           in  case mtau2 of
-                                                Nothing -> 
-                                                  let sttrEdge = G.Edge vs vt
-                                                   in (Right (sttrEdge, spr)) : acc
-                                                Just tau2 -> 
-                                                  let sttauEdge = G.Edge vs vtau
-                                                      sttauspr = Spring (2/tau2) 0 0 -- That's where tau2 is inserted
-                                                      tautrEdge = G.Edge vtau vt
-                                                   in [Right (sttauEdge, sttauspr)
-                                                      , Right (tautrEdge, spr)] <> acc
-                                       ) [] arms :: [Either String (G.Edge, Spring)]
+                            foldl' (\acc a -> case armEffect a of
+                                      Left err -> Left err : acc
+                                      Right armef -> 
+                                        let tid = tidOfArm a
+                                            tausid = StudyId $ StringId ((show sid) ++ "_" ++ show tid)
+                                            vs = stsvs Map.! (Left sid)
+                                            vt = stsvs Map.! (Right tid)
+                                            vtau = stsvs Map.! (Left tausid)
+                                            eff = relatedRelative armef
+                                            nl = expectation eff
+                                            k = 1 / (variance eff)
+                                            spr = Spring k nl nl
+                                         in  case mtau2 of
+                                              Nothing -> 
+                                                let sttrEdge = G.Edge vs vt
+                                                 in (Right (sttrEdge, spr)) : acc
+                                              Just tau2 -> 
+                                                let sttauEdge = G.Edge vs vtau
+                                                    sttauspr = Spring (2/tau2) 0 0 -- That's where tau2 is inserted
+                                                    tautrEdge = G.Edge vtau vt
+                                                 in [Right (sttauEdge, sttauspr)
+                                                    , Right (tautrEdge, spr)] <> acc
+                                     ) [] arms :: [Either String (G.Edge, Spring)]
                      in case eaces of 
                           Left err -> Left err
                           Right aces -> 

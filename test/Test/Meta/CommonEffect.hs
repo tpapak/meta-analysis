@@ -47,7 +47,7 @@ consistentPairwise = do
               let outcome = ((networkEstimates netes) Map.!
                               (TreatmentId (StringId "A")) Map.!
                                     (TreatmentId (StringId "B"))) 
-              let founde  = outcome
+              let founde  = roundDouble outcome 8
                   expected = 4
                in if expected == founde
                     then return $ testPassed name $ show founde <> "passed!"
